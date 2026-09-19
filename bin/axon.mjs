@@ -885,7 +885,7 @@ async function completion({ key, model, effort = 'off', messages, tools, signal,
   // OpenAI JSON response for tool-enabled rounds; regular chat stays streamed.
   const body = { model, messages, stream: !tools?.length };
   if (body.stream) body.stream_options = { include_usage: true };
-  if (effort !== 'off') body.reasoning_effort = effort;
+  if (effort !== 'off') { body.reasoning_effort = effort; body.include_reasoning = true; }
   if (tools?.length) { body.tools = tools; body.tool_choice = 'auto'; }
   if (maxTokens) body.max_tokens = maxTokens;
   let response;
@@ -919,6 +919,10 @@ async function completion({ key, model, effort = 'off', messages, tools, signal,
   const apply = chunk => {
     if (chunk.error) throw new Error(chunk.error.message || 'API stream error');
     if (chunk.usage) usage = chunk.usage;
+    // Legacy top-level Axon protocol: {"reasoning":...}, {"delta":...}, {"level":...}
+    if (typeof chunk.reasoning === 'string') { reasoning += chunk.reasoning; onDelta('reasoning', chunk.reasoning); }
+    if (typeof chunk.delta === 'string' && !chunk.choices) { content += chunk.delta; if (chunk.delta !== UNAVAILABLE) onDelta('content', chunk.delta); }
+    if (typeof chunk.level === 'string') onDelta('level', chunk.level);
     const choice = chunk.choices?.[0];
     if (!choice) return;
     if (choice.finish_reason) finishReason = choice.finish_reason;
