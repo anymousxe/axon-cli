@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [18, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm run check
+      - name: Verify generated standalone bundle
+        run: git diff --exit-code -- bin/axon.mjs
+      - run: npm pack
+      - name: Verify standalone without package.json
+        shell: bash
+        run: |
+          cp bin/axon.mjs "$RUNNER_TEMP/axon-standalone.mjs"
+          node "$RUNNER_TEMP/axon-standalone.mjs" --version
