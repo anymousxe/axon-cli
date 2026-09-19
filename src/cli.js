@@ -6,13 +6,13 @@ import { Session, lastSession, listSessions, memoryText, remember, forget, recor
 import { UI } from './ui.js';
 import { Input } from './input.js';
 import { completion, endpoint } from './api.js';
-import { loadImage, clipboardImage } from './images.js';
+import { loadImage, clipboardImage, extractImages, imageChip } from './images.js';
 import { Permissions } from './tools.js';
 import { Engine } from './engine.js';
-import { SLASH_HELP } from './commands.js';
+import { SLASH_HELP, isCommandLine } from './commands.js';
 import { copyText } from './clipboard.js';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable permission-gated tools (TTY required to approve)\n      --no-tools        Disable tools\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
 
 
@@ -113,9 +113,9 @@ export async function main(argv = process.argv.slice(2)) {
     const permissions = new Permissions(process.stdin.isTTY && input ? prompt => input.ask(prompt) : null, ui, opts.tools ?? false);
     const engine = new Engine({ dir, key, session, settings, ui, permissions });
     engine.contextPercent = engine.contextStats.percent;
-    input?.configure({ chats: () => listSessions(dir), status: () => ui.statusText(settings, money(engine.session.cost), engine.contextPercent), palette: ui.palette });
-    let savedFast = null;
     let pending = opts.images.map(loadImage);
+    input?.configure({ attachments: () => pending, attach: images => pending.push(...images), chats: () => listSessions(dir), status: () => ui.statusText(settings, money(engine.session.cost), engine.contextPercent), palette: ui.palette });
+    let savedFast = null;
     const operation = async action => {
       controller = new AbortController();
       const timeout = setTimeout(() => controller?.abort(), 300000);
@@ -129,7 +129,7 @@ export async function main(argv = process.argv.slice(2)) {
       catch (error) {
         if (!controller.signal.aborted) { ui.error(error.message); ui.event('error', { message: error.message, status: error.status }); }
         if (!repl) process.exitCode = controller.signal.aborted ? 130 : 1;
-      } finally { clearTimeout(timeout); controller = null; }
+      } finally { clearTimeout(timeout); controller = null; ui.stopActivity(); }
     };
     if (!repl) {
       let piped = '';
@@ -137,18 +137,33 @@ export async function main(argv = process.argv.slice(2)) {
         let size = 0;
         for await (const chunk of process.stdin) { size += chunk.length; if (size > 1024 * 1024) throw new Error('Piped input exceeds 1 MiB.'); piped += chunk; }
       }
-      const prompt = opts.prompt === undefined ? piped.trim() : opts.prompt + (piped.trim() ? `\n\n<stdin>\n${piped.trim()}\n</stdin>` : '');
+      const fromPrompt = extractImages(opts.prompt || ''), fromPipe = extractImages(piped);
+      pending.push(...fromPrompt.images, ...fromPipe.images);
+      piped = fromPipe.text;
+      const prompt = opts.prompt === undefined ? piped.trim() : fromPrompt.text + (piped.trim() ? `\n\n<stdin>\n${piped.trim()}\n</stdin>` : '');
       if (!prompt && !pending.length) throw new Error('No prompt supplied. Use axon -p "Hello", pipe text, or run axon in a terminal.');
       await turn(prompt, pending); return;
     }
     await ui.banner(VERSION, session.id);
+    if (interactive && !input.terminal) ui.info('Clipboard shortcuts need raw terminal mode. Use /img <path> or paste a file path instead.');
     ui.event('session', { session_id: session.id, ...settings });
     while (!interrupted) {
       if (!input.terminal) ui.status(settings, money(engine.session.cost), engine.contextPercent);
-      const line = await input.next(pending.length ? `axon [${pending.length} img] › ` : 'axon › ');
+      const line = await input.next('axon › ');
       if (line === null) break;
-      const text = line.trim(); if (!text) continue;
-      if (text.startsWith('/') && !text.startsWith('//') && !text.includes('\n')) {
+      if (input.cancelled) continue;
+      let text = line.trim();
+      // Resolve local absolute paths before interpreting slash commands.
+      if (!isCommandLine(line)) {
+        const found = extractImages(text); pending.push(...found.images); text = found.text.trim();
+        if (found.images.length && !text) {
+          ui.info(pending.map(imageChip).join('\n') + '\nAdd a prompt, or press Enter to describe.');
+          ui.event('attachments', { images: pending.map(({ name, width, height }) => ({ name, width, height })) });
+          continue;
+        }
+      }
+      if (!text && !pending.length) continue;
+      if (text.startsWith('/') && !text.startsWith('//') && !line.includes('\n')) {
         const space = text.search(/\s/), command = space < 0 ? text : text.slice(0, space), arg = space < 0 ? '' : text.slice(space).trim();
         try {
           if (command === '/exit' || command === '/quit') break;
@@ -188,7 +203,8 @@ export async function main(argv = process.argv.slice(2)) {
               if (!['on', 'off'].includes(arg)) { say(`Tools: ${permissions.enabled ? 'on' : 'off'}. Usage: /tools on|off`); break; }
               permissions.enabled = arg === 'on'; if (!permissions.enabled) { permissions.session = false; permissions.allowed.clear(); }
               say(`Tools ${arg}. ${arg === 'on' ? 'Each action needs approval; grants expire when you exit.' : 'Session approvals cleared.'}`); break;
-            case '/img': pending.push(arg ? loadImage(arg.replace(/^(["'])(.*)\1$/, '$2')) : clipboardImage()); say(`Queued ${pending.length} image(s). Add your prompt next.`); break;
+            case '/img': pending.push(arg ? loadImage(arg.replace(/^(["'])(.*)\1$/, '$2')) : await clipboardImage()); say(`Queued ${pending.length} image(s). Add your prompt next.`); break;
+            case '/imgs': say(pending.length ? pending.map(imageChip).join('\n') : 'No pending images.'); break;
             case '/images': if (arg !== 'clear') throw new Error('Usage: /images clear'); pending = []; say('Image queue cleared.'); break;
             case '/remember': remember(dir, arg); say('Memory saved for future turns and sessions.'); break;
             case '/memory': say(memoryText(dir).split('\n').filter(Boolean).map((value, i) => `${i + 1}. ${value}`).join('\n') || 'No memories yet. /remember <text>'); break;

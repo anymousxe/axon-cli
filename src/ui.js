@@ -1,4 +1,4 @@
-import { safeText, terminalCaps, Palette, AnswerRenderer, colorDiff } from './render.js';
+import { safeText, terminalCaps, Palette, AnswerRenderer, colorDiff, fitCells } from './render.js';
 export class UI {
   constructor({ json = false, color = terminalCaps().color, theme = 'auto' } = {}) {
     this.json = json; this.color = color && !json;
@@ -27,7 +27,8 @@ export class UI {
     const draw = () => {
       const label = thinking ? this.style(frame % 8 < 4 ? '2' : '1', '∴ thinking') : frames[frame % frames.length];
       frame++;
-      process.stderr.write('\r\x1b[2K' + this.palette.paint(thinking ? 'thinking' : 'primary', `${label} ${((Date.now() - start) / 1000).toFixed(1)}s`) + ' ' + this.palette.paint('meta', safeText(text).slice(0, Math.max(0, (process.stderr.columns || 80) - 25))));
+      if ((process.stderr.columns || 80) < 25) { process.stderr.write('\r\x1b[2K' + this.palette.paint('primary', fitCells(`${frames[frame % frames.length]} ${((Date.now() - start) / 1000).toFixed(1)}s`, Math.max(0, process.stderr.columns - 1)))); return; }
+      process.stderr.write('\r\x1b[2K' + this.palette.paint(thinking ? 'thinking' : 'primary', `${label} ${((Date.now() - start) / 1000).toFixed(1)}s`) + ' ' + this.palette.paint('meta', fitCells(safeText(text).replace(/\n/g, ' '), Math.max(0, (process.stderr.columns || 80) - 25))));
     };
     draw(); this.activityTimer = setInterval(draw, 100); this.activityTimer.unref();
   }
@@ -94,6 +95,7 @@ export class UI {
   }
   status(state, cost, context) {
     this.stopActivity(); if (this.json) return;
-    process.stderr.write('\n' + this.palette.paint('primary', `${state.fast ? '⚡ ' : ''}${state.model}`) + this.palette.paint('meta', ` · ${state.effort} · ctx ${context}% · `) + this.palette.paint('ok', `${cost} session`) + '\n');
+    const text = this.statusText(state, cost, context);
+    process.stderr.write('\n' + this.palette.paint('primary', process.stderr.isTTY ? fitCells(text, Math.max(1, (process.stderr.columns || 80) - 1)) : text) + '\n');
   }
 }

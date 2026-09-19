@@ -4,11 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import { Writable } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { spawnSync } from 'node:child_process';
-import { spawn } from 'node:child_process';
 
 // paths.js
 const { configDir, ensureDir, privateWrite, readJSON, readConfig, saveConfig, apiKey } = (() => {
@@ -237,11 +237,45 @@ return { Session, lastSession, listSessions, memoryText, remember, forget, messa
 })();
 
 // render.js
-const { safeText, terminalCaps, Palette, highlight, colorDiff, unifiedDiff, AnswerRenderer } = (() => {
+const { safeText, cellWidth, displayWidth, fitCells, inputViewport, terminalCaps, Palette, highlight, colorDiff, unifiedDiff, AnswerRenderer } = (() => {
 function safeText(text) {
   return String(text).replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
     .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
+}
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+function cellWidth(char) {
+  const n = char.codePointAt(0);
+  if (/^[\p{Mark}\u200d\ufe0f]+$/u.test(char)) return 0;
+  if (/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(char)) return 2;
+  return n >= 0x1100 && (n <= 0x115f || n === 0x2329 || n === 0x232a ||
+    (n >= 0x2e80 && n <= 0xa4cf) || (n >= 0xac00 && n <= 0xd7a3) ||
+    (n >= 0xf900 && n <= 0xfaff) || (n >= 0xfe10 && n <= 0xfe6f) ||
+    (n >= 0xff01 && n <= 0xff60) || (n >= 0xffe0 && n <= 0xffe6) ||
+    (n >= 0x20000 && n <= 0x3fffd)) ? 2 : 1;
+}
+function displayWidth(text) {
+  let width = 0;
+  for (const { segment } of graphemes.segment(safeText(text))) width += cellWidth(segment);
+  return width;
+}
+function fitCells(text, width) {
+  let out = '', used = 0;
+  for (const { segment } of graphemes.segment(safeText(text))) {
+    const size = cellWidth(segment); if (used + size > width) break;
+    out += segment; used += size;
+  }
+  return out;
+}
+function inputViewport(text, cursor, width) {
+  const before = displayWidth(text.slice(0, cursor));
+  const start = Math.max(0, before - width + 1);
+  let skipped = 0, offset = 0;
+  for (const { segment, index } of graphemes.segment(text)) {
+    if (skipped >= start) break;
+    skipped += cellWidth(segment); offset = index + segment.length;
+  }
+  return { text: fitCells(text.slice(offset), width), column: Math.max(0, before - skipped) };
 }
 function terminalCaps(stream = process.stderr, env = process.env, platform = process.platform) {
   const ansi = Boolean(stream.isTTY && env.TERM !== 'dumb' && (platform !== 'win32' || env.WT_SESSION || env.ANSICON || env.TERM || env.ConEmuANSI === 'ON'));
@@ -328,7 +362,7 @@ class AnswerRenderer {
   finish() { if (this.line) this.flushLine(false); if (this.fence) { this.write('\n' + this.palette.paint('meta', '└────────────────────')); this.fence = null; } }
 }
 
-return { safeText, terminalCaps, Palette, highlight, colorDiff, unifiedDiff, AnswerRenderer };
+return { safeText, cellWidth, displayWidth, fitCells, inputViewport, terminalCaps, Palette, highlight, colorDiff, unifiedDiff, AnswerRenderer };
 })();
 
 // ui.js
@@ -362,7 +396,8 @@ class UI {
     const draw = () => {
       const label = thinking ? this.style(frame % 8 < 4 ? '2' : '1', '∴ thinking') : frames[frame % frames.length];
       frame++;
-      process.stderr.write('\r\x1b[2K' + this.palette.paint(thinking ? 'thinking' : 'primary', `${label} ${((Date.now() - start) / 1000).toFixed(1)}s`) + ' ' + this.palette.paint('meta', safeText(text).slice(0, Math.max(0, (process.stderr.columns || 80) - 25))));
+      if ((process.stderr.columns || 80) < 25) { process.stderr.write('\r\x1b[2K' + this.palette.paint('primary', fitCells(`${frames[frame % frames.length]} ${((Date.now() - start) / 1000).toFixed(1)}s`, Math.max(0, process.stderr.columns - 1)))); return; }
+      process.stderr.write('\r\x1b[2K' + this.palette.paint(thinking ? 'thinking' : 'primary', `${label} ${((Date.now() - start) / 1000).toFixed(1)}s`) + ' ' + this.palette.paint('meta', fitCells(safeText(text).replace(/\n/g, ' '), Math.max(0, (process.stderr.columns || 80) - 25))));
     };
     draw(); this.activityTimer = setInterval(draw, 100); this.activityTimer.unref();
   }
@@ -429,7 +464,8 @@ class UI {
   }
   status(state, cost, context) {
     this.stopActivity(); if (this.json) return;
-    process.stderr.write('\n' + this.palette.paint('primary', `${state.fast ? '⚡ ' : ''}${state.model}`) + this.palette.paint('meta', ` · ${state.effort} · ctx ${context}% · `) + this.palette.paint('ok', `${cost} session`) + '\n');
+    const text = this.statusText(state, cost, context);
+    process.stderr.write('\n' + this.palette.paint('primary', process.stderr.isTTY ? fitCells(text, Math.max(1, (process.stderr.columns || 80) - 1)) : text) + '\n');
   }
 }
 
@@ -437,7 +473,7 @@ return { UI };
 })();
 
 // commands.js
-const { COMMANDS, fuzzyScore, completions, SLASH_HELP } = (() => {
+const { COMMANDS, isCommandLine, fuzzyScore, completions, SLASH_HELP } = (() => {
 
 const COMMANDS = [
   ['/btw', 'Ask Lightning without adding context'], ['/fast', 'Toggle Lightning with thinking off'],
@@ -446,13 +482,18 @@ const COMMANDS = [
   ['/status', 'Model, key, context and session details'], ['/theme', 'Choose dark, light or auto palette'],
   ['/model', 'List or switch models'], ['/think', 'Set effort or show/hide reasoning'],
   ['/hide-thinking', 'Toggle reasoning visibility'], ['/img', 'Attach image from file or clipboard'],
-  ['/images', 'Clear queued images'], ['/tools', 'Toggle permission-gated tools'],
+  ['/imgs', 'List pending image attachments'], ['/images', 'Clear queued images (/images clear)'], ['/tools', 'Toggle permission-gated tools'],
   ['/cost', 'Session and all-time costs'], ['/memory', 'List persistent memories'],
   ['/remember', 'Save a persistent memory'], ['/forget', 'Remove a numbered memory'],
   ['/chats', 'List recent chats'], ['/resume', 'Resume a recent chat'], ['/title', 'Rename this chat'],
   ['/clear', 'Clear context; keep transcript'], ['/new', 'Start a new chat'],
   ['/help', 'Show all commands'], ['/exit', 'Save and exit'],
 ];
+function isCommandLine(line) {
+  if (line.includes('\n')) return false;
+  const name = line.trimStart().split(/\s/, 1)[0];
+  return name === '/quit' || COMMANDS.some(([command]) => command === name);
+}
 function fuzzyScore(query, text) {
   query = query.toLowerCase(); text = text.toLowerCase();
   if (text.startsWith(query)) return 1000 - text.length;
@@ -478,9 +519,140 @@ function completions(line, chats = []) {
   }
   return rows.map(row => ({ ...row, score: fuzzyScore(query, row.label) })).filter(row => row.score >= 0).sort((a, b) => b.score - a.score);
 }
-const SLASH_HELP = COMMANDS.map(([name, description]) => `${name.padEnd(17)}${description}`).join('\n') + '\n\n/think off|low|medium|high|max or show|hide\n/theme dark|light|auto\n↑/↓ choose · Tab/Enter complete · Esc dismiss · Enter again to run\n/img [path] reads clipboard without a path. Ctrl-V pastes text.\nCtrl-C cancels; Ctrl-D leaves. // sends a literal leading slash.';
+const SLASH_HELP = COMMANDS.map(([name, description]) => `${name.padEnd(17)}${description}`).join('\n') + '\n\n/think off|low|medium|high|max or show|hide\n/theme dark|light|auto\n↑/↓ choose · Tab/Enter complete · Esc dismiss · Enter again to run\n/img [path] reads clipboard without a path. Ctrl-V pastes images or text.\nPaste a local image path to attach; /imgs lists chips; /images clear removes all.\nEnter sends pending images; Ctrl-U edits text only. Ctrl-L clears the screen.\nCtrl-C or double-Esc cancels; Ctrl-D exits on empty input. ↑/↓ recall history. // sends a literal leading slash.';
 
-return { COMMANDS, fuzzyScore, completions, SLASH_HELP };
+return { COMMANDS, isCommandLine, fuzzyScore, completions, SLASH_HELP };
+})();
+
+// images.js
+const { imagePart, loadImage, imageDimensions, imageChip, extractImages, readClipboard, clipboardImage } = (() => {
+
+
+
+
+
+const LIMIT = 10 * 1024 * 1024;
+function imagePart(buffer, name = 'clipboard') {
+  if (!buffer.length || buffer.length > LIMIT) throw new Error('Images must be nonempty and no larger than 10 MiB.');
+  let mime;
+  if (buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) mime = 'image/png';
+  else if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255) mime = 'image/jpeg';
+  else if (buffer.subarray(0, 6).toString().match(/^GIF8[79]a$/)) mime = 'image/gif';
+  else if (buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP') mime = 'image/webp';
+  else throw new Error('Unsupported image. Use PNG, JPEG, GIF, or WebP.');
+  return { name, ...imageDimensions(buffer, mime), part: { type: 'image_url', image_url: { url: `data:${mime};base64,${buffer.toString('base64')}` } } };
+}
+function loadImage(file) {
+  const full = path.resolve(file.replace(/^~(?=[/\\])/, os.homedir()));
+  const stat = fs.statSync(full);
+  if (!stat.isFile() || stat.size > LIMIT) throw new Error('Image must be a file no larger than 10 MiB.');
+  return imagePart(fs.readFileSync(full), path.basename(full));
+}
+// Header-only dimensions: never decode image pixels or invoke a shell.
+function imageDimensions(b, mime) {
+  try {
+    let width, height;
+    if (mime === 'image/png' && b.length >= 24) { width = b.readUInt32BE(16); height = b.readUInt32BE(20); }
+    else if (mime === 'image/gif' && b.length >= 10) { width = b.readUInt16LE(6); height = b.readUInt16LE(8); }
+    else if (mime === 'image/jpeg') {
+      let at = 2;
+      while (at + 4 < b.length) {
+        if (b[at++] !== 255) continue;
+        const marker = b[at++];
+        if (marker === 0xda || marker === 0xd9) break;
+        if (marker === 0xff || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+        const size = b.readUInt16BE(at);
+        if (size < 2 || at + size > b.length) break;
+        if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker) && size >= 7) {
+          height = b.readUInt16BE(at + 3); width = b.readUInt16BE(at + 5); break;
+        }
+        at += size;
+      }
+    } else if (mime === 'image/webp') {
+      const kind = b.toString('ascii', 12, 16);
+      if (kind === 'VP8X' && b.length >= 30) { width = b.readUIntLE(24, 3) + 1; height = b.readUIntLE(27, 3) + 1; }
+      else if (kind === 'VP8 ' && b.length >= 30) { width = b.readUInt16LE(26) & 0x3fff; height = b.readUInt16LE(28) & 0x3fff; }
+      else if (kind === 'VP8L' && b.length >= 25) { const bits = b.readUInt32LE(21); width = (bits & 0x3fff) + 1; height = ((bits >>> 14) & 0x3fff) + 1; }
+    }
+    return width && height ? { width, height } : {};
+  } catch { return {}; }
+}
+function imageChip(image, index) {
+  return `[img ${index + 1} · ${image.name} · ${image.width ? image.width + 'x' + image.height : 'size unknown'}]`;
+}
+
+// Only existing local image files qualify. Quoted and shell-escaped paths work;
+// nonexistent paths, URLs and ordinary prose stay untouched.
+function extractImages(text) {
+  const images = [];
+  const decode = token => token.replace(/^(["'])(.*)\1$/s, '$2').replace(/\\([ \t()'"\\])/g, '$1');
+  const take = token => {
+    let file = decode(token);
+    if (!/\.(png|jpe?g|gif|webp)$/i.test(file)) return false;
+    if (file.startsWith('file://')) { try { file = fileURLToPath(file); } catch { return false; } }
+    try {
+      if (!fs.existsSync(file.replace(/^~(?=[/\\])/, os.homedir()))) return false;
+      images.push(loadImage(file)); return true;
+    } catch { return false; }
+  };
+  // Whole-line paths may contain unquoted spaces (file managers often paste these).
+  const remaining = String(text).split('\n').map(line => {
+    if (take(line.trim())) return '';
+    return line.replace(/"[^"\n]+"|'[^'\n]+'|(?:\\[^\n]|[^\s"'])+/g, token => take(token) ? '' : token);
+  }).join('\n');
+  return { text: remaining, images };
+}
+
+function clipboardCommand(command, args) {
+  return new Promise(resolve => {
+    let child, timer, size = 0, chunks = [], settled = false;
+    const done = value => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } };
+    try {
+      child = spawn(command, args, { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+      timer = setTimeout(() => { child.kill(); done(null); }, 2000);
+      child.on('error', () => done(null));
+      child.stdout.on('data', chunk => {
+        size += chunk.length;
+        if (size > LIMIT * 2) { child.kill(); done(null); } else chunks.push(chunk);
+      });
+      child.on('close', code => done(code === 0 ? Buffer.concat(chunks) : null));
+    } catch { done(null); }
+  });
+}
+async function readClipboard({ platform = process.platform, run = clipboardCommand } = {}) {
+  const asImage = data => { try { return data?.length ? { image: imagePart(data) } : null; } catch { return null; } };
+  if (platform === 'win32') {
+    const script = "Add-Type -AssemblyName System.Windows.Forms; $i=Get-Clipboard -Format Image; if ($null -ne $i) { $m=New-Object System.IO.MemoryStream; $i.Save($m,[System.Drawing.Imaging.ImageFormat]::Png); [Console]::Write('IMAGE:'+ [Convert]::ToBase64String($m.ToArray())); $i.Dispose(); $m.Dispose() } else { $t=Get-Clipboard -Raw; [Console]::Write('TEXT:'+ [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes([string]$t))) }";
+    const data = await run('powershell.exe', ['-NoProfile', '-STA', '-Command', script]);
+    const value = data?.toString() || '';
+    if (value.startsWith('IMAGE:')) { const image = asImage(Buffer.from(value.slice(6), 'base64')); if (image) return image; }
+    if (value.startsWith('TEXT:')) return { text: Buffer.from(value.slice(5), 'base64').toString('utf8') };
+  } else if (platform === 'darwin') {
+    const image = asImage(await run('pngpaste', ['-'])); if (image) return image;
+    const text = await run('osascript', ['-e', 'the clipboard as text']);
+    if (text !== null) return { text: text.toString('utf8').replace(/\r?\n$/, '') };
+  } else {
+    for (const provider of ['wl-paste', 'xclip']) {
+      const query = provider === 'wl-paste' ? ['--list-types'] : ['-selection', 'clipboard', '-t', 'TARGETS', '-o'];
+      const types = (await run(provider, query))?.toString().split(/\s+/) || ['image/png'];
+      const args = type => provider === 'wl-paste' ? ['--no-newline', '--type', type] : ['-selection', 'clipboard', '-t', type, '-o'];
+      for (const type of types.filter(type => /^image\/(png|jpeg|gif|webp)$/.test(type))) {
+        const image = asImage(await run(provider, args(type))); if (image) return image;
+      }
+      const textType = types.find(type => /^(text\/plain;charset=utf-8|UTF8_STRING)$/i.test(type)) || types.find(type => type === 'text/plain') || 'UTF8_STRING';
+      const text = await run(provider, args(textType));
+      if (text !== null && !text.includes(0)) return { text: text.toString('utf8') };
+    }
+  }
+  throw new Error('Clipboard unavailable. Use /img <path> or paste an image file path. Clipboard tools: wl-clipboard/xclip (Linux), pngpaste (macOS), PowerShell (Windows).');
+}
+async function clipboardImage() {
+  const value = await readClipboard();
+  if (!value.image) throw new Error('Clipboard contains no image. Copy an image, or use /img <path>.');
+  return value.image;
+}
+
+return { imagePart, loadImage, imageDimensions, imageChip, extractImages, readClipboard, clipboardImage };
 })();
 
 // input.js
@@ -490,7 +662,7 @@ const { Input } = (() => {
 class Input {
   constructor(onInterrupt) {
     this.queue = []; this.waiter = null; this.closed = false; this.muted = false;
-    this.terminal = Boolean(process.stdin.isTTY && terminalCaps().ansi);
+    this.terminal = Boolean(process.stdin.isTTY && typeof process.stdin.setRawMode === 'function' && terminalCaps().ansi);
     this.onInterrupt = onInterrupt; this.rows = 0; this.line = ''; this.cursor = 0;
     this.history = []; this.historyAt = 0; this.selected = 0; this.dismissed = false;
     this.menuEnabled = false; this.palette = new Palette();
@@ -509,7 +681,7 @@ class Input {
       this.rl.on('close', () => { this.closed = true; if (this.waiter) { this.waiter(null); this.waiter = null; } });
     }
   }
-  configure({ chats, status, palette } = {}) { this.chats = chats; this.status = status; if (palette) this.palette = palette; }
+  configure({ chats, status, palette, attachments, attach } = {}) { this.chats = chats; this.status = status; this.attachments = attachments; this.attach = attach; if (palette) this.palette = palette; }
   items() { return this.menuEnabled && !this.muted && !this.dismissed ? completions(this.line, this.line.startsWith('/resume ') ? this.chats?.() || [] : []) : []; }
   erase() {
     if (!this.terminal || !this.rows) return;
@@ -517,41 +689,81 @@ class Input {
   }
   render() {
     this.erase();
-    const width = Math.max(8, (process.stderr.columns || 80) - 1);
-    const clip = value => [...safeText(value).replace(/\n/g, '↵').replace(/\t/g, '  ')].slice(0, width).join('');
+    const width = Math.max(1, (process.stderr.columns || 80) - 1);
+    const clip = value => fitCells(safeText(value).replace(/\n/g, '↵').replace(/\t/g, '  '), width);
     const lines = [];
     if (this.menuEnabled && this.status) lines.push(this.palette.paint('primary', clip(this.status())));
+    const chips = this.menuEnabled ? this.attachments?.() || [] : [];
+    const chipLimit = Math.max(1, Math.floor((process.stderr.rows || 24) / 4));
+    for (let i = 0; i < Math.min(chips.length, chipLimit); i++) lines.push(this.palette.paint('meta', clip(imageChip(chips[i], i))));
+    if (chips.length > chipLimit) lines.push(this.palette.paint('meta', clip(`+${chips.length - chipLimit} images · /imgs to list`)));
+    if (this.notice) lines.push(this.palette.paint('meta', clip(this.notice)));
     const items = this.items(); this.selected = Math.min(this.selected, Math.max(0, items.length - 1));
-    const count = Math.max(1, Math.min(6, (process.stderr.rows || 24) - 5));
+    const count = Math.max(1, Math.min(6, (process.stderr.rows || 24) - lines.length - 3));
     const start = Math.max(0, this.selected - count + 1);
     for (let i = start; i < Math.min(items.length, start + count); i++) {
       const row = items[i];
       lines.push(this.palette.paint(i === this.selected ? 'primary' : 'meta', clip(`${i === this.selected ? '›' : ' '} ${row.label}  ${row.description}`)));
     }
-    const prompt = clip(this.prompt || '').slice(0, Math.max(1, width - 4));
+    const prompt = fitCells(clip(this.prompt || ''), Math.max(0, width - 2));
     const shown = this.muted ? '' : this.line.replace(/\n/g, '↵').replace(/\t/g, ' ');
-    const available = Math.max(1, width - [...prompt].length);
-    const charCursor = [...shown.slice(0, this.cursor)].length;
-    const offset = Math.max(0, charCursor - available + 1);
-    const visible = [...shown].slice(offset, offset + available).join('');
-    lines.push(this.palette.paint('primary', prompt) + visible);
+    const available = Math.max(1, width - displayWidth(prompt));
+    const view = inputViewport(shown, this.cursor, available);
+    lines.push(this.palette.paint('primary', prompt) + view.text);
     process.stderr.write(lines.join('\n'));
     this.rows = lines.length;
-    const col = [...prompt].length + (this.muted ? 0 : charCursor - offset);
+    const col = displayWidth(prompt) + (this.muted ? 0 : view.column);
     process.stderr.write('\r' + (col ? `\x1b[${col}C` : ''));
   }
   edit() { this.dismissed = false; this.selected = 0; this.render(); }
   insert(text) { this.line = this.line.slice(0, this.cursor) + text + this.line.slice(this.cursor); this.cursor += text.length; }
+  detectImages() {
+    if (!this.menuEnabled || this.muted || !this.attach || isCommandLine(this.line)) return false;
+    const found = extractImages(this.line);
+    if (!found.images.length) return false;
+    const left = extractImages(this.line.slice(0, this.cursor)).text;
+    this.line = found.text; this.cursor = Math.min(left.length, this.line.length);
+    this.attach(found.images); return true;
+  }
+  async pasteClipboard() {
+    if (this.clipboardBusy) return;
+    const waiter = this.waiter;
+    this.clipboardBusy = true; this.clipboardKeys = []; this.notice = 'Reading clipboard…'; this.render();
+    try {
+      const value = await (this.readClipboard || readClipboard)();
+      if (this.closed || this.waiter !== waiter) return;
+      this.notice = '';
+      if (value.image) {
+        if (this.menuEnabled && !this.muted && this.attach) this.attach([value.image]);
+        else this.notice = 'Image paste is only available at the chat prompt; use /img <path>.';
+      } else { this.insert(safeText(value.text.replace(/\r\n?/g, '\n'))); this.detectImages(); }
+    } catch (error) { if (this.waiter === waiter) this.notice = error.message; }
+    finally {
+      this.clipboardBusy = false;
+      const keys = this.clipboardKeys; this.clipboardKeys = [];
+      if (!this.closed && this.waiter === waiter) { this.edit(); for (const [text, key] of keys) this.key(text, key); }
+    }
+  }
   key(text, key) {
-    if (key.ctrl && key.name === 'c') { this.cancel(); this.onInterrupt(); return; }
+    if (key.ctrl && key.name === 'c' && !this.pasting) { this.cancel(); this.onInterrupt(); return; }
+    if (key.name === 'escape' && !this.pasting) {
+      const now = Date.now();
+      if (key.sequence === '\x1b\x1b' || (this.escapeAt && now - this.escapeAt < 500)) { this.escapeAt = 0; this.onInterrupt(); }
+      else this.escapeAt = now;
+      if (this.waiter) { this.dismissed = true; this.render(); }
+      return;
+    }
+    this.escapeAt = 0;
     if (!this.waiter) return;
+    if (this.clipboardBusy) { this.clipboardKeys.push([text, key]); return; }
     if (key.name === 'paste-start') { this.pasting = true; this.paste = ''; return; }
     if (key.name === 'paste-end') {
-      this.pasting = false; this.insert(safeText(this.paste.replace(/\r\n?/g, '\n'))); this.paste = ''; this.edit(); return;
+      this.pasting = false; this.insert(safeText(this.paste.replace(/\r\n?/g, '\n'))); this.paste = ''; this.detectImages(); this.edit(); return;
     }
     if (this.pasting) { this.paste += text || key.sequence || ''; return; }
-    if (key.ctrl && key.name === 'd') { if (!this.line) this.close(); else { this.line = this.line.slice(0, this.cursor) + this.line.slice(this.cursor + 1); this.edit(); } return; }
-    if (key.name === 'escape') { this.dismissed = true; this.render(); return; }
+    if (key.ctrl && key.name === 'v') { void this.pasteClipboard(); return; }
+    if (key.ctrl && key.name === 'l') { if (this.terminal) { process.stderr.write('\x1b[2J\x1b[H'); this.rows = 0; } this.render(); return; }
+    if (key.ctrl && key.name === 'd') { if (!this.line) this.close(); else { this.line = this.line.slice(0, this.cursor) + this.line.slice(this.cursor + ([...this.line.slice(this.cursor)][0]?.length || 0)); this.edit(); } return; }
     const items = this.items();
     if (items.length && ['up', 'down'].includes(key.name)) { this.selected = (this.selected + (key.name === 'down' ? 1 : -1) + items.length) % items.length; this.render(); return; }
     if (key.name === 'tab' || (items.length && key.name === 'return')) {
@@ -560,7 +772,10 @@ class Input {
       if (item) { this.line = item.value; this.cursor = this.line.length; this.dismissed = true; this.selected = 0; this.render(); }
       return;
     }
-    if (key.name === 'return' || key.name === 'enter') { this.submit(this.line); return; }
+    if (key.name === 'return' || key.name === 'enter') {
+      if (this.detectImages() && !this.line.trim()) { this.line = ''; this.cursor = 0; this.edit(); return; }
+      this.submit(this.line); return;
+    }
     if (key.name === 'backspace') {
       if (this.cursor) { const n = [...this.line.slice(0, this.cursor)].at(-1).length; this.line = this.line.slice(0, this.cursor - n) + this.line.slice(this.cursor); this.cursor -= n; } this.edit(); return;
     }
@@ -576,7 +791,7 @@ class Input {
       if (this.historyAt === this.history.length) this.draft = this.line;
       this.historyAt = Math.max(0, Math.min(this.history.length, this.historyAt + (key.name === 'up' ? -1 : 1)));
       this.line = this.history[this.historyAt] ?? this.draft ?? ''; this.cursor = this.line.length; this.dismissed = true;
-    } else if (text && !key.ctrl && !key.meta && !text.startsWith('\x1b')) { this.insert(safeText(text)); this.edit(); return; }
+    } else if (text && !key.ctrl && !key.meta && !text.startsWith('\x1b')) { this.insert(safeText(text)); if (/\s/.test(text)) this.detectImages(); this.edit(); return; }
     this.render();
   }
   submit(line) {
@@ -589,7 +804,7 @@ class Input {
   next(prompt = '', menu = true) {
     if (this.queue.length) return Promise.resolve(this.queue.shift());
     if (this.closed) return Promise.resolve(null);
-    this.prompt = prompt; this.menuEnabled = menu; this.line = ''; this.cursor = 0; this.dismissed = false; this.selected = 0; this.historyAt = this.history.length;
+    this.cancelled = false; this.notice = ''; this.pasting = false; this.paste = ''; this.prompt = prompt; this.menuEnabled = menu; this.line = ''; this.cursor = 0; this.dismissed = false; this.selected = 0; this.historyAt = this.history.length;
     return new Promise(resolve => {
       this.waiter = resolve;
       if (this.terminal) this.render(); else if (process.stdin.isTTY && prompt) process.stderr.write(prompt);
@@ -600,7 +815,7 @@ class Input {
     try { return (await this.next(prompt, false)) ?? ''; }
     finally { this.muted = false; }
   }
-  cancel() { if (this.waiter) this.submit(''); }
+  cancel() { if (this.waiter) { this.erase(); const resolve = this.waiter; this.waiter = null; this.line = ''; this.cursor = 0; resolve(''); this.cancelled = true; } }
   close() {
     if (this.terminal && !this.closed) {
       this.erase(); process.stderr.write('\x1b[?2004l');
@@ -745,47 +960,6 @@ async function completion({ key, model, effort = 'off', messages, tools, signal,
 }
 
 return { APIError, endpoint, sseEvents, completion };
-})();
-
-// images.js
-const { imagePart, loadImage, clipboardImage } = (() => {
-
-
-
-
-const LIMIT = 10 * 1024 * 1024;
-function imagePart(buffer, name = 'clipboard') {
-  if (!buffer.length || buffer.length > LIMIT) throw new Error('Images must be nonempty and no larger than 10 MiB.');
-  let mime;
-  if (buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) mime = 'image/png';
-  else if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255) mime = 'image/jpeg';
-  else if (buffer.subarray(0, 6).toString().match(/^GIF8[79]a$/)) mime = 'image/gif';
-  else if (buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP') mime = 'image/webp';
-  else throw new Error('Unsupported image. Use PNG, JPEG, GIF, or WebP.');
-  return { name, part: { type: 'image_url', image_url: { url: `data:${mime};base64,${buffer.toString('base64')}` } } };
-}
-function loadImage(file) {
-  const full = path.resolve(file.replace(/^~(?=[/\\])/, os.homedir()));
-  const stat = fs.statSync(full);
-  if (!stat.isFile() || stat.size > LIMIT) throw new Error('Image must be a file no larger than 10 MiB.');
-  return imagePart(fs.readFileSync(full), path.basename(full));
-}
-function clipboardImage() {
-  if (process.platform === 'win32') {
-    const script = 'Add-Type -AssemblyName System.Windows.Forms; $i=[System.Windows.Forms.Clipboard]::GetImage(); if ($null -eq $i) { exit 2 }; $m=New-Object System.IO.MemoryStream; $i.Save($m,[System.Drawing.Imaging.ImageFormat]::Png); [Console]::Write([Convert]::ToBase64String($m.ToArray())); $i.Dispose(); $m.Dispose()';
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-STA', '-Command', script], { maxBuffer: LIMIT * 2, timeout: 10000, windowsHide: true });
-    if (result.status === 0 && result.stdout.length) return imagePart(Buffer.from(result.stdout.toString().trim(), 'base64'));
-    throw new Error('No clipboard image found. Copy an image, or use /img <path>.');
-  }
-  const commands = [['wl-paste', ['--no-newline', '--type', 'image/png']], ['xclip', ['-selection', 'clipboard', '-t', 'image/png', '-o']]];
-  for (const [command, args] of commands) {
-    const result = spawnSync(command, args, { maxBuffer: LIMIT + 1, timeout: 5000 });
-    if (!result.error && result.status === 0 && result.stdout.length) return imagePart(result.stdout);
-  }
-  throw new Error('No clipboard image found. Install wl-clipboard (Wayland) or xclip (X11), or use /img <path>.');
-}
-
-return { imagePart, loadImage, clipboardImage };
 })();
 
 // tools.js
@@ -1091,7 +1265,7 @@ return { copyText };
 const { VERSION, parseArgs, main } = (() => {
 
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable permission-gated tools (TTY required to approve)\n      --no-tools        Disable tools\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
 
 
@@ -1192,9 +1366,9 @@ async function main(argv = process.argv.slice(2)) {
     const permissions = new Permissions(process.stdin.isTTY && input ? prompt => input.ask(prompt) : null, ui, opts.tools ?? false);
     const engine = new Engine({ dir, key, session, settings, ui, permissions });
     engine.contextPercent = engine.contextStats.percent;
-    input?.configure({ chats: () => listSessions(dir), status: () => ui.statusText(settings, money(engine.session.cost), engine.contextPercent), palette: ui.palette });
-    let savedFast = null;
     let pending = opts.images.map(loadImage);
+    input?.configure({ attachments: () => pending, attach: images => pending.push(...images), chats: () => listSessions(dir), status: () => ui.statusText(settings, money(engine.session.cost), engine.contextPercent), palette: ui.palette });
+    let savedFast = null;
     const operation = async action => {
       controller = new AbortController();
       const timeout = setTimeout(() => controller?.abort(), 300000);
@@ -1208,7 +1382,7 @@ async function main(argv = process.argv.slice(2)) {
       catch (error) {
         if (!controller.signal.aborted) { ui.error(error.message); ui.event('error', { message: error.message, status: error.status }); }
         if (!repl) process.exitCode = controller.signal.aborted ? 130 : 1;
-      } finally { clearTimeout(timeout); controller = null; }
+      } finally { clearTimeout(timeout); controller = null; ui.stopActivity(); }
     };
     if (!repl) {
       let piped = '';
@@ -1216,18 +1390,33 @@ async function main(argv = process.argv.slice(2)) {
         let size = 0;
         for await (const chunk of process.stdin) { size += chunk.length; if (size > 1024 * 1024) throw new Error('Piped input exceeds 1 MiB.'); piped += chunk; }
       }
-      const prompt = opts.prompt === undefined ? piped.trim() : opts.prompt + (piped.trim() ? `\n\n<stdin>\n${piped.trim()}\n</stdin>` : '');
+      const fromPrompt = extractImages(opts.prompt || ''), fromPipe = extractImages(piped);
+      pending.push(...fromPrompt.images, ...fromPipe.images);
+      piped = fromPipe.text;
+      const prompt = opts.prompt === undefined ? piped.trim() : fromPrompt.text + (piped.trim() ? `\n\n<stdin>\n${piped.trim()}\n</stdin>` : '');
       if (!prompt && !pending.length) throw new Error('No prompt supplied. Use axon -p "Hello", pipe text, or run axon in a terminal.');
       await turn(prompt, pending); return;
     }
     await ui.banner(VERSION, session.id);
+    if (interactive && !input.terminal) ui.info('Clipboard shortcuts need raw terminal mode. Use /img <path> or paste a file path instead.');
     ui.event('session', { session_id: session.id, ...settings });
     while (!interrupted) {
       if (!input.terminal) ui.status(settings, money(engine.session.cost), engine.contextPercent);
-      const line = await input.next(pending.length ? `axon [${pending.length} img] › ` : 'axon › ');
+      const line = await input.next('axon › ');
       if (line === null) break;
-      const text = line.trim(); if (!text) continue;
-      if (text.startsWith('/') && !text.startsWith('//') && !text.includes('\n')) {
+      if (input.cancelled) continue;
+      let text = line.trim();
+      // Resolve local absolute paths before interpreting slash commands.
+      if (!isCommandLine(line)) {
+        const found = extractImages(text); pending.push(...found.images); text = found.text.trim();
+        if (found.images.length && !text) {
+          ui.info(pending.map(imageChip).join('\n') + '\nAdd a prompt, or press Enter to describe.');
+          ui.event('attachments', { images: pending.map(({ name, width, height }) => ({ name, width, height })) });
+          continue;
+        }
+      }
+      if (!text && !pending.length) continue;
+      if (text.startsWith('/') && !text.startsWith('//') && !line.includes('\n')) {
         const space = text.search(/\s/), command = space < 0 ? text : text.slice(0, space), arg = space < 0 ? '' : text.slice(space).trim();
         try {
           if (command === '/exit' || command === '/quit') break;
@@ -1267,7 +1456,8 @@ async function main(argv = process.argv.slice(2)) {
               if (!['on', 'off'].includes(arg)) { say(`Tools: ${permissions.enabled ? 'on' : 'off'}. Usage: /tools on|off`); break; }
               permissions.enabled = arg === 'on'; if (!permissions.enabled) { permissions.session = false; permissions.allowed.clear(); }
               say(`Tools ${arg}. ${arg === 'on' ? 'Each action needs approval; grants expire when you exit.' : 'Session approvals cleared.'}`); break;
-            case '/img': pending.push(arg ? loadImage(arg.replace(/^(["'])(.*)\1$/, '$2')) : clipboardImage()); say(`Queued ${pending.length} image(s). Add your prompt next.`); break;
+            case '/img': pending.push(arg ? loadImage(arg.replace(/^(["'])(.*)\1$/, '$2')) : await clipboardImage()); say(`Queued ${pending.length} image(s). Add your prompt next.`); break;
+            case '/imgs': say(pending.length ? pending.map(imageChip).join('\n') : 'No pending images.'); break;
             case '/images': if (arg !== 'clear') throw new Error('Usage: /images clear'); pending = []; say('Image queue cleared.'); break;
             case '/remember': remember(dir, arg); say('Memory saved for future turns and sessions.'); break;
             case '/memory': say(memoryText(dir).split('\n').filter(Boolean).map((value, i) => `${i + 1}. ${value}`).join('\n') || 'No memories yet. /remember <text>'); break;

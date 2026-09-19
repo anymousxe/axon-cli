@@ -3,6 +3,40 @@ export function safeText(text) {
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
     .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 }
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+export function cellWidth(char) {
+  const n = char.codePointAt(0);
+  if (/^[\p{Mark}\u200d\ufe0f]+$/u.test(char)) return 0;
+  if (/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(char)) return 2;
+  return n >= 0x1100 && (n <= 0x115f || n === 0x2329 || n === 0x232a ||
+    (n >= 0x2e80 && n <= 0xa4cf) || (n >= 0xac00 && n <= 0xd7a3) ||
+    (n >= 0xf900 && n <= 0xfaff) || (n >= 0xfe10 && n <= 0xfe6f) ||
+    (n >= 0xff01 && n <= 0xff60) || (n >= 0xffe0 && n <= 0xffe6) ||
+    (n >= 0x20000 && n <= 0x3fffd)) ? 2 : 1;
+}
+export function displayWidth(text) {
+  let width = 0;
+  for (const { segment } of graphemes.segment(safeText(text))) width += cellWidth(segment);
+  return width;
+}
+export function fitCells(text, width) {
+  let out = '', used = 0;
+  for (const { segment } of graphemes.segment(safeText(text))) {
+    const size = cellWidth(segment); if (used + size > width) break;
+    out += segment; used += size;
+  }
+  return out;
+}
+export function inputViewport(text, cursor, width) {
+  const before = displayWidth(text.slice(0, cursor));
+  const start = Math.max(0, before - width + 1);
+  let skipped = 0, offset = 0;
+  for (const { segment, index } of graphemes.segment(text)) {
+    if (skipped >= start) break;
+    skipped += cellWidth(segment); offset = index + segment.length;
+  }
+  return { text: fitCells(text.slice(offset), width), column: Math.max(0, before - skipped) };
+}
 export function terminalCaps(stream = process.stderr, env = process.env, platform = process.platform) {
   const ansi = Boolean(stream.isTTY && env.TERM !== 'dumb' && (platform !== 'win32' || env.WT_SESSION || env.ANSICON || env.TERM || env.ConEmuANSI === 'ON'));
   return { ansi, color: ansi && !('NO_COLOR' in env), truecolor: /truecolor|24bit/i.test(env.COLORTERM || '') || Boolean(env.WT_SESSION), unicode: platform !== 'win32' || Boolean(env.WT_SESSION) };

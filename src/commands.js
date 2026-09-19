@@ -6,13 +6,18 @@ export const COMMANDS = [
   ['/status', 'Model, key, context and session details'], ['/theme', 'Choose dark, light or auto palette'],
   ['/model', 'List or switch models'], ['/think', 'Set effort or show/hide reasoning'],
   ['/hide-thinking', 'Toggle reasoning visibility'], ['/img', 'Attach image from file or clipboard'],
-  ['/images', 'Clear queued images'], ['/tools', 'Toggle permission-gated tools'],
+  ['/imgs', 'List pending image attachments'], ['/images', 'Clear queued images (/images clear)'], ['/tools', 'Toggle permission-gated tools'],
   ['/cost', 'Session and all-time costs'], ['/memory', 'List persistent memories'],
   ['/remember', 'Save a persistent memory'], ['/forget', 'Remove a numbered memory'],
   ['/chats', 'List recent chats'], ['/resume', 'Resume a recent chat'], ['/title', 'Rename this chat'],
   ['/clear', 'Clear context; keep transcript'], ['/new', 'Start a new chat'],
   ['/help', 'Show all commands'], ['/exit', 'Save and exit'],
 ];
+export function isCommandLine(line) {
+  if (line.includes('\n')) return false;
+  const name = line.trimStart().split(/\s/, 1)[0];
+  return name === '/quit' || COMMANDS.some(([command]) => command === name);
+}
 export function fuzzyScore(query, text) {
   query = query.toLowerCase(); text = text.toLowerCase();
   if (text.startsWith(query)) return 1000 - text.length;
@@ -38,4 +43,4 @@ export function completions(line, chats = []) {
   }
   return rows.map(row => ({ ...row, score: fuzzyScore(query, row.label) })).filter(row => row.score >= 0).sort((a, b) => b.score - a.score);
 }
-export const SLASH_HELP = COMMANDS.map(([name, description]) => `${name.padEnd(17)}${description}`).join('\n') + '\n\n/think off|low|medium|high|max or show|hide\n/theme dark|light|auto\n↑/↓ choose · Tab/Enter complete · Esc dismiss · Enter again to run\n/img [path] reads clipboard without a path. Ctrl-V pastes text.\nCtrl-C cancels; Ctrl-D leaves. // sends a literal leading slash.';
+export const SLASH_HELP = COMMANDS.map(([name, description]) => `${name.padEnd(17)}${description}`).join('\n') + '\n\n/think off|low|medium|high|max or show|hide\n/theme dark|light|auto\n↑/↓ choose · Tab/Enter complete · Esc dismiss · Enter again to run\n/img [path] reads clipboard without a path. Ctrl-V pastes images or text.\nPaste a local image path to attach; /imgs lists chips; /images clear removes all.\nEnter sends pending images; Ctrl-U edits text only. Ctrl-L clears the screen.\nCtrl-C or double-Esc cancels; Ctrl-D exits on empty input. ↑/↓ recall history. // sends a literal leading slash.';

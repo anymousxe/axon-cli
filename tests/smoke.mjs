@@ -9,13 +9,15 @@ import { Engine } from '../src/engine.js';
 import { Session } from '../src/storage.js';
 import { Permissions } from '../src/tools.js';
 import { costFor } from '../src/models.js';
+import { apiKey, configDir } from '../src/paths.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const live = process.argv.includes('--live');
-if (live && !process.env.AXON_API_KEY) { console.error('Set AXON_API_KEY to a working test key. No keys are bundled.'); process.exit(2); }
+const liveKey = live ? apiKey(configDir()) : null;
+if (live && !liveKey) { console.error('Run axon login or set AXON_API_KEY to a working test key. No keys are bundled.'); process.exit(2); }
 const fixture = live ? null : await startFixture();
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-smoke-'));
-const env = { ...process.env, AXON_CONFIG_DIR: dir, AXON_API_KEY: live ? process.env.AXON_API_KEY : 'fixture-key', NO_COLOR: '1' };
+const env = { ...process.env, AXON_CONFIG_DIR: dir, AXON_API_KEY: live ? liveKey : 'fixture-key', NO_COLOR: '1' };
 if (fixture) env.AXON_BASE_URL = fixture.url;
 const run = (args, input = '', timeout = 90000) => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, ['bin/axon.mjs', ...args], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -48,7 +50,7 @@ try {
   const image = path.join(dir, 'pixel.png');
   fs.writeFileSync(image, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5E0AAAAASUVORK5CYII=', 'base64'));
   for (const [model, route] of [['axon-1.8-flash', 'native'], ['axon-1.8-lightning', 'describe']]) {
-    const vision = await run(['--model', model, '-i', image, '-p', 'Describe what you see briefly.', '--json']);
+    const vision = await run(['--model', model, '-p', `Describe what you see briefly. "${image}"`, '--json']);
     assert.equal(vision.code, 0, vision.err);
     assert.ok(events(vision).some(e => e.type === 'image_route' && e.route === route));
     assert.ok(events(vision).find(e => e.type === 'result')?.text); ok(`image routing: ${model} → ${route}`);
