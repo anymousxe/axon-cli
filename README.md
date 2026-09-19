@@ -8,7 +8,7 @@
 
 **A small, capable terminal companion for the Axon API.** Stream a quick answer, keep a long-running
 conversation, attach a screenshot, or let Axon work with your files—with your permission.
-Linux and Windows. One portable file. No runtime dependencies. Bring your own API key.
+Linux, Windows, and macOS. One portable file. No runtime dependencies. Bring your own API key.
 
 ## Install
 
@@ -20,12 +20,12 @@ warn about the extra option and can omit it.
 
 **Linux — Bash**
 ```sh
-npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.1.0/anymousxe-axon-cli-1.1.0.tgz
+npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.2.0/anymousxe-axon-cli-1.2.0.tgz
 ```
 
 **Windows — PowerShell**
 ```powershell
-npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.1.0/anymousxe-axon-cli-1.1.0.tgz
+npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.2.0/anymousxe-axon-cli-1.2.0.tgz
 ```
 
 Then run `axon`. First run opens a hidden-key wizard, validates your key with a tiny **billable** request,
@@ -36,7 +36,7 @@ On Linux, use a user-owned Node installation if your global npm prefix is not wr
 <details>
 <summary>Portable single-file installation / running from source</summary>
 
-Download [`axon.mjs`](https://github.com/anymousxe/axon-cli/releases/download/v1.1.0/axon.mjs) and run:
+Download [`axon.mjs`](https://github.com/anymousxe/axon-cli/releases/download/v1.2.0/axon.mjs) and run:
 
 ```sh
 node /path/to/axon.mjs --help
@@ -62,7 +62,8 @@ axon -c                               # Continue your last chat
 axon -r 20260919T215942-39f63f          # Resume an ID from /chats
 axon --model axon-1.8-lightning -p "Summarize this idea"
 axon --think high -p "Check this proof carefully"
-axon -i screenshot.png -p "What is wrong with this UI?"
+axon -p "What is wrong with this UI? ./screenshot.png" # Auto-attach image paths
+axon -i screenshot.png -p "Describe this"              # Explicit flag still works
 axon --tools                          # Offer tools; ask before each action
 axon -p "Say hello" --json            # Newline-delimited JSON events
 ```
@@ -102,6 +103,8 @@ Chat saved: 20260919T215942-39f63f
   Old chat remains on disk when it leaves the context window.
 - **Clear status.** Model · thinking effort · estimated context usage · session cost; ⚡ in fast mode.
   A TTY activity indicator runs while waiting; elapsed time and tokens follow each answer.
+- **Paste-anywhere images.** Ctrl+V attaches a clipboard image or inserts text at the cursor.
+  Paste or type a local image path to attach it; dim chips show names and dimensions.
 - **Images that reach the right model.** Native Flash input or a Flash description passed to a text-only model.
 - **Tools you control.** Read, write, edit, list, and run commands. Off by default; no silent approvals.
 - **Script-friendly.** Answers on stdout, UI on stderr, NDJSON when requested, friendly error exit codes.
@@ -125,7 +128,8 @@ Chat saved: 20260919T215942-39f63f
 | `/think off\|low\|medium\|high\|max` | Select reasoning effort; `off` omits it from requests |
 | `/think show\|hide` | Show/hide reasoning text |
 | `/img [path]` | Queue an image from a file or the clipboard |
-| `/images clear` | Clear queued images |
+| `/imgs` | List pending image chips with names and dimensions |
+| `/images clear` | Clear queued images without changing prompt text |
 | `/tools on\|off` | Enable tools or disable and clear session approvals |
 | `/cost` | Session and all-time totals with per-model breakdown |
 | `/remember <text>` | Add a timestamped persistent memory |
@@ -137,8 +141,8 @@ Chat saved: 20260919T215942-39f63f
 | `/help` · `/exit` | Help / save and leave |
 
 CLI settings flags apply to that invocation. Model, effort, thinking visibility, and theme commands persist. `/fast` is temporary and restores the previous model/effort when toggled off.
-Use `//` to send a prompt beginning with a literal slash. Ctrl-D exits; Ctrl-C cancels an active
-request, or twice at an idle prompt exits. The editor uses raw keys on capable TTYs, with a plain-line fallback for dumb terminals, legacy Windows consoles, and piped input.
+Use `//` to send a prompt beginning with a literal slash. Ctrl-D exits on empty input; Ctrl-C cancels an active
+request, or twice at an idle prompt exits. Double-Esc also interrupts an active request. The editor uses raw keys on capable TTYs, with a plain-line fallback for dumb terminals, legacy Windows consoles, and piped input.
 
 ## Command menu and terminal styling
 
@@ -148,13 +152,16 @@ After completing `/model `, press Tab again to open the model argument menu with
 prices. `/think `, `/resume `, `/theme `, `/tools ` and `/images ` also complete arguments.
 Command matching starts at the beginning of the prompt; slashes inside ordinary prose do not
 hijack typing. Bracketed paste is inserted as text, including multiline text, never executed
-as a batch of commands. Home/End, arrows, Backspace/Delete, Ctrl-A/E/U/K/W and history work.
+as a batch of commands. Home/End, arrows, Backspace/Delete and Ctrl-A/E/U/K/W work.
+Ctrl-L clears and redraws the screen. ↑ on empty input recalls prior turns; ↓ returns to your draft.
+Ctrl-U clears text to the cursor, **not attachments**. `/help` and the dropdown share one command table.
+Status, menus, chips and the editor clip by terminal cells, including CJK and emoji, on narrow screens.
 Permission prompts and hidden key entry never show command suggestions.
 
 Illustrative terminal sample (the actual UI colors these lines):
 
 ```text
-  ϟ AXON 1.1.0
+  ϟ AXON 1.2.0
 
 axon-1.8-flash · off · ctx 2% · $0.0004 session
 › /model   List or switch models
@@ -205,10 +212,35 @@ axon › Explain this layout.
 - **Lightning, 1.6, 1.6 Pro:** Flash first describes the image precisely; that description is then
   injected as explicitly untrusted context for the chosen text-only model. Both requests count toward cost.
 - Switching a native-image conversation to a text-only model also routes retained images through Flash.
-- `/img` with no argument reads an image from the clipboard: `wl-paste` (Wayland), `xclip` (X11), or
-  Windows PowerShell's clipboard image API. Install `wl-clipboard`/`xclip` on Linux as needed.
-  Ctrl-V remains normal text paste; use `/img` for images. Quoted paths with spaces work.
-- Files are validated by magic bytes and capped at **10 MiB each**. Attach multiple with repeated `-i`.
+### Paste an image—no command needed
+
+1. Copy an image, focus Axon, and press **Ctrl+V**. In raw-key mode Axon reads the system clipboard:
+   images become chips; text is inserted at the cursor, with multiline text kept as **one turn**.
+2. Or paste/drag/type an existing `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp` file path. Paths inside
+   a prompt attach too: `Explain "./screenshots/my layout.png"`. Quoted and shell-escaped paths,
+   whole-line paths with spaces, `~/` paths, and local `file://` URIs are supported.
+3. Add your question and press Enter. Enter on an empty prompt sends the queued images for description.
+   A path entered by itself becomes a chip first, so you can add a question before sending.
+
+```text
+[img 1 · clipboard · 1170x1969]
+axon › What would you improve here?
+```
+
+- `/imgs` lists pending images; `/images clear` removes all. Ctrl-U only edits text.
+- `/img [path]` still works; omit the path to read a clipboard image explicitly.
+- **Linux:** install `wl-clipboard` for Wayland or `xclip` for X11; Wayland is tried first.
+- **Windows:** PowerShell `Get-Clipboard` reads image or text; no extra clipboard utility is required.
+- **macOS:** install `pngpaste` for images (`brew install pngpaste`); `osascript` handles text.
+- If the terminal intercepts Ctrl+V, use its text-paste shortcut to paste a file path, or configure it
+  to send Ctrl+V to the application. No terminal protocol can make a terminal's text-only paste
+  transmit image bytes. Missing clipboard tools or raw-mode support produce guidance, not a crash.
+- One-shot prompts auto-attach paths too: `axon -p "Describe ./screenshot.png"`, or
+  `printf '%s\n' './screenshot.png' | axon`. `--repl` intentionally keeps piped lines as separate
+  turns; a path-only line queues an attachment for the next prompt (or a blank line to send).
+- Files are validated by magic bytes and capped at **10 MiB each**. Missing/unsupported paths remain
+  literal text; `/img <path>` reports explicit file errors. Repeated `-i` remains supported.
+- Clipboard reads are on demand, bounded and shell-free. Images are not sent until you submit.
 
 Native image payloads are stored in local chat JSONL; description-routed chats store the description.
 There is no separate image upload service.
@@ -265,7 +297,7 @@ parallel processes do not lose entries. There is no migration from an arbitrary 
 
 | Platform | Default directory |
 | --- | --- |
-| Linux | `$XDG_CONFIG_HOME/axon` or `~/.config/axon` |
+| Linux / macOS | `$XDG_CONFIG_HOME/axon` or `~/.config/axon` |
 | Windows | `%APPDATA%\axon`, falling back to `%USERPROFILE%\.axon` |
 
 | Variable | Purpose |
@@ -294,7 +326,7 @@ axon -p "Say hello" --json
 ```
 
 Stdout is NDJSON: `delta`, `reasoning` (when visible), `image_route`, `tool`, and a final `result`, or
-`error` / `cancelled`. REPL mode also emits `session`, `notice`, `usage`, `btw`, and `compact` events; approved file changes can emit `diff`. `result` includes:
+`error` / `cancelled`. REPL mode also emits `session`, `notice`, `attachments`, `usage`, `btw`, and `compact` events; approved file changes can emit `diff`. `result` includes:
 `session_id`, `text`, `elapsed_seconds`, `usage`, `cost`, `session_cost`, and `context_percent`.
 No banner or ANSI escapes are written to JSON stdout. Extract only `type == "result"` for the whole answer.
 
@@ -305,14 +337,15 @@ request failure leaves the REPL open. Tools may return a denied/failed result wi
 
 ```sh
 npm run check          # Build + unit tests + offline end-to-end smoke checks
-npm run smoke:live     # Opt-in, billable: requires AXON_API_KEY
+npm run smoke:live     # Opt-in, billable: saved login key or AXON_API_KEY
 npm pack               # Build the installable npm tarball
 ```
 
 Verified during release preparation on Linux with Node **18.20.8** and **26.8.2**:
-- **31 unit/protocol/PTY tests:** pricing, storage, paths, SSE fragmentation, permissions, cancellation,
+- **40 unit/protocol/PTY tests:** pricing, storage, paths, SSE fragmentation, permissions, cancellation,
   early EOF, retry behavior, JSON tool parsing, rendering, capabilities, autocomplete, compaction,
-  side-question isolation, retry persistence, clipboard fallbacks, and actual PTY interaction.
+  side-question isolation, retry persistence, clipboard fallbacks, image dimensions/path extraction,
+  cursor insertion and async-paste ordering, Unicode cell clipping, and actual PTY interaction.
 - **11 offline end-to-end checks:** real subprocess CLI, local HTTP fixture, image routing, permission denial,
   echo execution, memory across processes, continue/resume, and persisted costs.
 - **9 live API smoke checks:** chat, piped/streamed REPL, memory, both image routes, resume, actual echo tool,
@@ -320,11 +353,13 @@ Verified during release preparation on Linux with Node **18.20.8** and **26.8.2*
 - **Additional live v1.1 command smoke:** fast mode, side questions, compaction, post-summary context
   recall, retry, status, and detailed usage.
 - **Automated Linux PTY checks:** menu placement, completion, resize, multiline bracketed paste,
+  Ctrl+V image/text via a controlled clipboard executable, chips, Ctrl-L, double-Esc,
   hidden input, EOF, and terminal-mode restoration. Prior v1 live checks covered login and tool approvals.
 - A [CI workflow template](.github/ci-template.yml) targets Node **18, 22, and 24** on **Linux and Windows**.
   It is **not active**: the publishing login lacks GitHub workflow scope. Move it to
-  `.github/workflows/ci.yml` using a workflow-authorized account to enable it. Windows runtime and
-  desktop clipboard integration have **not** been verified in this release environment.
+  `.github/workflows/ci.yml` using a workflow-authorized account to enable it. Windows/macOS runtime and
+  real desktop clipboard integration have **not** been verified in this release environment;
+  provider responses and fallback paths are covered by controlled tests.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The source is intentionally small: `api`, `storage`, `images`,
 `tools`, `engine`, `input`, `ui`, `render`, `commands`, `clipboard`, `paths`, `models`, and `cli`. A deterministic, dependency-free build script

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.0 — 2026-09-19
+
+- Paste-anywhere images: Ctrl+V reads images or text directly from the clipboard in raw-key mode;
+  no `/img` command required. Linux Wayland/X11, Windows PowerShell, and macOS providers.
+- Existing PNG/JPEG/GIF/WebP paths auto-attach from pasted/typed prompts, `-p`, and piped input;
+  support quoted paths, shell-escaped spaces, home paths, and local file URIs.
+- Pending image chips above the prompt show source/name and dimensions. `/imgs` lists attachments;
+  `/images clear` removes them. `/img` and repeated `-i` remain supported.
+- Async, bounded, shell-free clipboard reads keep the editor responsive; missing tools and
+  non-raw terminals explain the file-path fallback. Multiline paste remains one chat turn.
+- Ctrl-L clear/redraw, Ctrl-D exit-on-empty with Unicode-safe forward delete, double-Esc streaming
+  interrupt, history draft restoration, and cancellation that does not accidentally send attachments.
+- Cell-aware narrow-terminal clipping for status, menus, chips and input, including CJK/emoji;
+  bounded attachment rows and tiny-terminal spinner output. Retained high-contrast light palette.
+- Shared help/dropdown command registry documents all new shortcuts and image queue behavior.
+- Preserve streaming, thinking, permissions/tools, memory, ledger, chats, themes and both image routes.
+- 40 tests pass on Node 18 and 26, including actual PTY image/text paste via a controlled provider;
+  11 fixture smoke checks and 9 live API smoke checks pass. Live smoke reads saved login credentials.
+- Rebuilt standalone bundle; release includes npm tarball, bundle and SHA-256 checksums.
+
 ## 1.1.0 — 2026-09-19
 
 - Simplified model selection and request schema; removed obsolete server-specific selectors.
