@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "description": "A fast, dependency-free terminal companion for the Axon model API.",
   "type": "module",
-  "bin": { "axon": "bin/axon.mjs" },
-  "engines": { "node": ">=18" },
+  "bin": {
+    "axon": "bin/axon.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node bin/axon.mjs",
     "build": "node scripts/build.mjs",
@@ -14,10 +18,33 @@
     "check": "npm run build && npm test && npm run smoke",
     "prepack": "npm run build"
   },
-  "files": ["bin/", "src/", "scripts/build.mjs", "README.md", "LICENSE", "CHANGELOG.md"],
+  "files": [
+    "bin/",
+    "src/",
+    "scripts/build.mjs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "docs/hero.svg",
+    "examples/live-transcript.txt"
+  ],
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/anymousxe/axon-cli.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anymousxe/axon-cli.git"
+  },
   "homepage": "https://github.com/anymousxe/axon-cli#readme",
-  "keywords": ["axon", "ai", "cli", "chat", "terminal", "vision"],
-  "publishConfig": { "access": "public" }
+  "keywords": [
+    "axon",
+    "ai",
+    "cli",
+    "chat",
+    "terminal",
+    "vision"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

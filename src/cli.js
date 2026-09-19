@@ -22,9 +22,10 @@ export function parseArgs(argv) {
     if (flag.startsWith('--') && flag.includes('=')) { const index = flag.indexOf('='); inline = flag.slice(index + 1); flag = flag.slice(0, index); }
     if (values[flag]) {
       const value = inline ?? argv[++i];
-      if (value === undefined || (inline === undefined && value.startsWith('--'))) throw new Error(`${flag} requires a value.`);
+      if (value === undefined || (inline === undefined && /^--?\w/.test(value))) throw new Error(`${flag} requires a value.`);
       if (values[flag] === 'image') options.images.push(value); else options[values[flag]] = value;
-    } else if (['-c', '--continue'].includes(flag)) options.continue = true;
+    } else if (inline !== undefined) throw new Error(`${flag} does not take a value.`);
+    else if (['-c', '--continue'].includes(flag)) options.continue = true;
     else if (['-h', '--help'].includes(flag)) options.help = true;
     else if (flag === '--version' || flag === '-v') options.version = true;
     else if (flag === '--json') options.json = true;

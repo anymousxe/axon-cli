@@ -15,15 +15,17 @@ Linux and Windows. One portable file. No runtime dependencies. Bring your own AP
 Install [Node.js 18+](https://nodejs.org/) first (a current LTS release is recommended).
 The following install the versioned npm package from GitHub Releases, **not the npm registry**.
 No Git checkout, build tools, or `sudo`-executed installer scripts required.
+`--allow-remote=root` explicitly permits this direct download on npm 12+; older npm versions may
+warn about the extra option and can omit it.
 
 **Linux — Bash**
 ```sh
-npm install -g https://github.com/anymousxe/axon-cli/releases/download/v1.0.0/anymousxe-axon-cli-1.0.0.tgz
+npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.0.0/anymousxe-axon-cli-1.0.0.tgz
 ```
 
 **Windows — PowerShell**
 ```powershell
-npm install -g https://github.com/anymousxe/axon-cli/releases/download/v1.0.0/anymousxe-axon-cli-1.0.0.tgz
+npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.0.0/anymousxe-axon-cli-1.0.0.tgz
 ```
 
 Then run `axon`. First run opens a hidden-key wizard, validates your key with a tiny **billable** request,
@@ -246,8 +248,8 @@ npm run smoke:live     # Opt-in, billable: requires AXON_API_KEY
 npm pack               # Build the installable npm tarball
 ```
 
-Verified during release preparation:
-- **19 unit/protocol tests:** pricing, storage, paths, SSE fragmentation, permissions, cancellation,
+Verified during release preparation on Linux with Node **18.20.8** and **26.8.2**:
+- **20 unit/protocol tests:** pricing, storage, paths, SSE fragmentation, permissions, cancellation,
   early EOF, retry behavior, and JSON tool response parsing.
 - **11 offline end-to-end checks:** real subprocess CLI, local HTTP fixture, image routing, permission denial,
   echo execution, memory across processes, continue/resume, and persisted costs.

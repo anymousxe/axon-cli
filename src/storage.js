@@ -14,14 +14,25 @@ export class Session {
     this.messages = []; this.title = 'New chat'; this.cost = 0; this.records = [];
     if (id) {
       if (!fs.existsSync(this.file)) throw new Error(`Chat not found: ${id}`);
-      const lines = fs.readFileSync(this.file, 'utf8').split('\n');
+      const raw = fs.readFileSync(this.file, 'utf8');
+      const lines = raw.split('\n');
+      let recovered = false;
       for (let i = 0; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         let record;
         try { record = JSON.parse(lines[i]); }
-        catch { if (i >= lines.length - 2) break; throw new Error(`Corrupt chat at line ${i + 1}: ${id}`); }
+        catch {
+          if (lines.slice(i + 1).every(line => !line.trim())) {
+            // A killed process may leave half a final JSON record. Repair only
+            // that tail so subsequent appends do not poison the next resume.
+            privateWrite(this.file, lines.slice(0, i).join('\n') + '\n');
+            recovered = true; break;
+          }
+          throw new Error(`Corrupt chat at line ${i + 1}: ${id}`);
+        }
         this.apply(record);
       }
+      if (!recovered && raw && !raw.endsWith('\n')) fs.appendFileSync(this.file, '\n');
     } else this.append({ type: 'meta', title: this.title, created: new Date().toISOString() });
     privateWrite(path.join(dir, 'last-chat'), this.id);
   }

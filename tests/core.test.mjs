@@ -141,3 +141,22 @@ test('API streams answers/reasoning/tools, usage, retries and error handling', a
     await assert.rejects(completion({ ...base, messages: [{ role: 'user', content: 'FIXTURE_402' }] }), /wallet/);
   } finally { if (previous === undefined) delete process.env.AXON_BASE_URL; else process.env.AXON_BASE_URL = previous; await fixture.close(); }
 });
+
+test('resume repairs only a truncated final JSONL record before future appends', () => {
+  const dir = temp();
+  try {
+    const first = new Session(dir); first.add({ role: 'user', content: 'saved' });
+    fs.appendFileSync(first.file, '{"type":"mess');
+    const resumed = new Session(dir, first.id);
+    resumed.add({ role: 'assistant', content: 'recovered' });
+    assert.equal(new Session(dir, first.id).messages.length, 2);
+    const withoutNewline = fs.readFileSync(first.file, 'utf8').trimEnd();
+    fs.writeFileSync(first.file, withoutNewline);
+    const again = new Session(dir, first.id); again.add({ role: 'user', content: 'safe append' });
+    assert.equal(new Session(dir, first.id).messages.length, 3);
+    fs.writeFileSync(first.file, '{bad}\n' + fs.readFileSync(first.file, 'utf8'));
+    assert.throws(() => new Session(dir, first.id), /Corrupt chat/);
+    assert.throws(() => parseArgs(['--json=false']), /does not take a value/);
+    assert.throws(() => parseArgs(['-p', '-c']), /requires/);
+  } finally { fs.rmSync(dir, { recursive: true }); }
+});
