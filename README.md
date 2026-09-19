@@ -10,6 +10,12 @@
 conversation, attach a screenshot, or let Axon work with your files—with your permission.
 Linux, Windows, and macOS. One portable file. No runtime dependencies. Bring your own API key.
 
+## Axon 1.8 Flash concept film
+
+A 24-second copper-core 3D ad, with a responsive interactive web edition and original synthesized audio.
+[Download the 1080p film](https://github.com/anymousxe/axon-cli/releases/tag/axon-flash-ad-v1)
+or [run the interactive edition locally](docs/ad/README.md). The ad is independent of the CLI runtime.
+
 ## Install
 
 Install [Node.js 18+](https://nodejs.org/) first (a current LTS release is recommended).
