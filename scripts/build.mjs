@@ -30,5 +30,5 @@ for (const line of imports) {
 const body = output.map(module => `// ${module.file}\nconst { ${module.exports.join(', ')} } = (() => {\n${module.source}\nreturn { ${module.exports.join(', ')} };\n})();`).join('\n\n');
 const bundle = '#!/usr/bin/env node\n// Generated from src/ by scripts/build.mjs. No runtime dependencies.\n' + [...bindings.values()].join('\n') + '\n\n' + body + '\n\nawait main();\n';
 fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
-fs.writeFileSync(path.join(root, 'bin/axon.js'), bundle, { mode: 0o755 });
-console.log(`Built bin/axon.js (${Buffer.byteLength(bundle)} bytes)`);
+fs.writeFileSync(path.join(root, 'bin/axon.mjs'), bundle, { mode: 0o755 });
+console.log(`Built bin/axon.mjs (${Buffer.byteLength(bundle)} bytes)`);

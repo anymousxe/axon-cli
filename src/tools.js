@@ -15,7 +15,11 @@ export class Permissions {
   async allow(name, args) {
     if (!this.enabled) return false;
     if (this.session || this.allowed.has(signature(name, args))) return true;
-    this.ui.info(`\nPermission requested: ${name}\n${JSON.stringify(args, null, 2).slice(0, 1800)}`);
+    if (JSON.stringify(args).length > 20000 && name !== 'write_file') {
+      this.ui.info('Denied: tool arguments are too long to review safely.'); return false;
+    }
+    const preview = name === 'write_file' ? { ...args, content: typeof args.content === 'string' && args.content.length > 3000 ? args.content.slice(0, 1500) + `\n… [${args.content.length - 3000} characters omitted; this file will be overwritten] …\n` + args.content.slice(-1500) : args.content } : args;
+    this.ui.info(`\nPermission requested: ${name}\n${JSON.stringify(preview, null, 2)}`);
     if (!this.ask) { this.ui.info('Denied: tool permissions require an interactive terminal.'); return false; }
     const answer = (await this.ask('Allow? [y/N/a=always-for-session/c=always-for-cmd] ')).trim().toLowerCase();
     if (['a', 'always-for-session'].includes(answer)) { this.session = true; return true; }

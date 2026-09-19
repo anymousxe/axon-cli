@@ -10,13 +10,28 @@ export class UI {
     this.color = color;
     this.section = null;
     this.answerStarted = false;
+    this.activityTimer = null;
   }
   style(code, text) { return this.color ? `\x1b[${code}m${text}\x1b[0m` : text; }
-  info(text = '') { if (!this.json) process.stderr.write(safeText(text) + '\n'); }
-  error(text) { process.stderr.write(this.style('31', `Error: ${safeText(text)}`) + '\n'); }
+  startActivity(text) {
+    if (!this.color || this.json) return;
+    this.stopActivity();
+    let frame = 0;
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    this.activityTimer = setInterval(() => {
+      process.stderr.write('\r\x1b[2K' + this.style('2', `${frames[frame++ % frames.length]} ${safeText(text)}`));
+    }, 100);
+    this.activityTimer.unref();
+  }
+  stopActivity() {
+    if (this.activityTimer) { clearInterval(this.activityTimer); this.activityTimer = null; process.stderr.write('\r\x1b[2K'); }
+  }
+  info(text = '') { this.stopActivity(); if (!this.json) process.stderr.write(safeText(text) + '\n'); }
+  error(text) { this.stopActivity(); process.stderr.write(this.style('31', `Error: ${safeText(text)}`) + '\n'); }
   event(type, data = {}) { if (this.json) process.stdout.write(JSON.stringify({ type, ...data }) + '\n'); }
   begin() { this.section = null; this.answerStarted = false; }
   reasoning(text) {
+    this.stopActivity();
     if (this.json) return this.event('reasoning', { text });
     if (this.section !== 'reasoning') {
       process.stderr.write(this.style('2;3', '\n∴ thinking\n'));
@@ -25,6 +40,7 @@ export class UI {
     process.stderr.write(this.style('2;3', safeText(text)));
   }
   answer(text) {
+    this.stopActivity();
     if (this.json) return this.event('delta', { text });
     if (this.section === 'reasoning') process.stderr.write('\n\n');
     this.section = 'answer';
@@ -32,6 +48,7 @@ export class UI {
     process.stdout.write(safeText(text));
   }
   finish() {
+    this.stopActivity();
     if (!this.json && this.section === 'reasoning') process.stderr.write('\n');
     if (!this.json && this.answerStarted) process.stdout.write('\n');
     this.section = null;
@@ -43,7 +60,7 @@ export class UI {
   }
   status(state, cost, context) {
     const text = `${state.model} · ${state.variant} · think ${state.effort} · ${cost} session · ctx ${context}%`;
-    this.info(this.color ? '' : '');
+    this.info();
     if (!this.json) process.stderr.write(this.style('2', text) + '\n');
   }
 }

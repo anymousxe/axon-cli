@@ -116,6 +116,9 @@ class Session {
   append(record) {
     fs.appendFileSync(this.file, JSON.stringify({ at: new Date().toISOString(), ...record }) + '\n', { mode: 0o600 });
     this.apply(record);
+    if (record.type === 'title' || record.type === 'meta') {
+      privateWrite(this.file.replace(/\.jsonl$/, '.meta.json'), JSON.stringify({ title: this.title }));
+    }
   }
   add(message) { this.append({ type: 'message', message }); }
   setTitle(title) { this.append({ type: 'title', title: title.slice(0, 160) }); }
@@ -139,6 +142,7 @@ function listSessions(dir) {
     for (const line of buf.toString().split('\n')) {
       try { const r = JSON.parse(line); if (['title', 'meta'].includes(r.type)) title = r.title; } catch {}
     }
+    title = readJSON(full.replace(/\.jsonl$/, '.meta.json'), { title }).title;
     return { id: file.slice(0, -6), title, updated: stat.mtime.toISOString() };
   }).sort((a, b) => b.updated.localeCompare(a.updated)).slice(0, 30);
 }
@@ -235,13 +239,28 @@ class UI {
     this.color = color;
     this.section = null;
     this.answerStarted = false;
+    this.activityTimer = null;
   }
   style(code, text) { return this.color ? `\x1b[${code}m${text}\x1b[0m` : text; }
-  info(text = '') { if (!this.json) process.stderr.write(safeText(text) + '\n'); }
-  error(text) { process.stderr.write(this.style('31', `Error: ${safeText(text)}`) + '\n'); }
+  startActivity(text) {
+    if (!this.color || this.json) return;
+    this.stopActivity();
+    let frame = 0;
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    this.activityTimer = setInterval(() => {
+      process.stderr.write('\r\x1b[2K' + this.style('2', `${frames[frame++ % frames.length]} ${safeText(text)}`));
+    }, 100);
+    this.activityTimer.unref();
+  }
+  stopActivity() {
+    if (this.activityTimer) { clearInterval(this.activityTimer); this.activityTimer = null; process.stderr.write('\r\x1b[2K'); }
+  }
+  info(text = '') { this.stopActivity(); if (!this.json) process.stderr.write(safeText(text) + '\n'); }
+  error(text) { this.stopActivity(); process.stderr.write(this.style('31', `Error: ${safeText(text)}`) + '\n'); }
   event(type, data = {}) { if (this.json) process.stdout.write(JSON.stringify({ type, ...data }) + '\n'); }
   begin() { this.section = null; this.answerStarted = false; }
   reasoning(text) {
+    this.stopActivity();
     if (this.json) return this.event('reasoning', { text });
     if (this.section !== 'reasoning') {
       process.stderr.write(this.style('2;3', '\n∴ thinking\n'));
@@ -250,6 +269,7 @@ class UI {
     process.stderr.write(this.style('2;3', safeText(text)));
   }
   answer(text) {
+    this.stopActivity();
     if (this.json) return this.event('delta', { text });
     if (this.section === 'reasoning') process.stderr.write('\n\n');
     this.section = 'answer';
@@ -257,6 +277,7 @@ class UI {
     process.stdout.write(safeText(text));
   }
   finish() {
+    this.stopActivity();
     if (!this.json && this.section === 'reasoning') process.stderr.write('\n');
     if (!this.json && this.answerStarted) process.stdout.write('\n');
     this.section = null;
@@ -268,7 +289,7 @@ class UI {
   }
   status(state, cost, context) {
     const text = `${state.model} · ${state.variant} · think ${state.effort} · ${cost} session · ctx ${context}%`;
-    this.info(this.color ? '' : '');
+    this.info();
     if (!this.json) process.stderr.write(this.style('2', text) + '\n');
   }
 }
@@ -362,8 +383,13 @@ async function* sseEvents(body) {
   if (data.length) yield data.join('\n');
 }
 
+const UNAVAILABLE = 'Axon inference is temporarily unavailable. Please try again in a moment.';
+
 async function completion({ key, model, variant = 'crescent', effort = 'off', messages, tools, signal, onDelta = () => {}, onRetry = () => {}, maxTokens, retries = 3 }) {
-  const body = { model, variant, messages, stream: true, stream_options: { include_usage: true } };
+  // The live Axon endpoint currently drops tool_calls from SSE. Use its
+  // OpenAI JSON response for tool-enabled rounds; regular chat stays streamed.
+  const body = { model, variant, messages, stream: !tools?.length };
+  if (body.stream) body.stream_options = { include_usage: true };
   if (effort !== 'off') body.reasoning_effort = effort;
   if (tools?.length) { body.tools = tools; body.tool_choice = 'auto'; }
   if (maxTokens) body.max_tokens = maxTokens;
@@ -393,7 +419,7 @@ async function completion({ key, model, variant = 'crescent', effort = 'off', me
     }
     throw new APIError(response.status, detail);
   }
-  let content = '', reasoning = '', usage = null, finishReason = null;
+  let content = '', reasoning = '', usage = null, finishReason = null, done = false;
   const calls = new Map();
   const apply = chunk => {
     if (chunk.error) throw new Error(chunk.error.message || 'API stream error');
@@ -402,7 +428,7 @@ async function completion({ key, model, variant = 'crescent', effort = 'off', me
     if (!choice) return;
     if (choice.finish_reason) finishReason = choice.finish_reason;
     const delta = choice.delta || choice.message || {};
-    if (typeof delta.content === 'string') { content += delta.content; onDelta('content', delta.content); }
+    if (typeof delta.content === 'string') { content += delta.content; if (delta.content !== UNAVAILABLE) onDelta('content', delta.content); }
     if (typeof delta.reasoning_content === 'string') { reasoning += delta.reasoning_content; onDelta('reasoning', delta.reasoning_content); }
     for (const part of delta.tool_calls || []) {
       const index = part.index ?? 0;
@@ -420,14 +446,21 @@ async function completion({ key, model, variant = 'crescent', effort = 'off', me
     apply(obj);
   } else {
     for await (const event of sseEvents(response.body)) {
-      if (event.trim() === '[DONE]') break;
+      if (event.trim() === '[DONE]') { done = true; break; }
       let obj;
       try { obj = JSON.parse(event); } catch { throw new Error('Malformed JSON in the Axon event stream. The partial answer was preserved.'); }
       apply(obj);
     }
   }
+  if (!finishReason && !done) throw new Error('The response stream ended early. Partial output was preserved; retry your request.');
+  if (content.trim() === UNAVAILABLE) {
+    if (retries <= 0) throw new Error('Axon inference is temporarily unavailable. Please retry shortly.');
+    onRetry(4 - retries);
+    await sleep(1000, undefined, { signal });
+    return completion({ key, model, variant, effort, messages, tools, signal, onDelta, onRetry, maxTokens, retries: retries - 1 });
+  }
   const toolCalls = [...calls.values()];
-  if (!content && !toolCalls.length && !finishReason) throw new Error('Axon returned an empty or interrupted response.');
+  if (!content && !toolCalls.length) throw new Error('Axon returned an empty or interrupted response.');
   return { content, reasoning, toolCalls, usage, finishReason };
 }
 
@@ -493,7 +526,11 @@ class Permissions {
   async allow(name, args) {
     if (!this.enabled) return false;
     if (this.session || this.allowed.has(signature(name, args))) return true;
-    this.ui.info(`\nPermission requested: ${name}\n${JSON.stringify(args, null, 2).slice(0, 1800)}`);
+    if (JSON.stringify(args).length > 20000 && name !== 'write_file') {
+      this.ui.info('Denied: tool arguments are too long to review safely.'); return false;
+    }
+    const preview = name === 'write_file' ? { ...args, content: typeof args.content === 'string' && args.content.length > 3000 ? args.content.slice(0, 1500) + `\n… [${args.content.length - 3000} characters omitted; this file will be overwritten] …\n` + args.content.slice(-1500) : args.content } : args;
+    this.ui.info(`\nPermission requested: ${name}\n${JSON.stringify(preview, null, 2)}`);
     if (!this.ask) { this.ui.info('Denied: tool permissions require an interactive terminal.'); return false; }
     const answer = (await this.ask('Allow? [y/N/a=always-for-session/c=always-for-cmd] ')).trim().toLowerCase();
     if (['a', 'always-for-session'].includes(answer)) { this.session = true; return true; }
@@ -570,8 +607,12 @@ const { Engine } = (() => {
 class Engine {
   constructor({ dir, key, session, settings, ui, permissions }) { Object.assign(this, { dir, key, session, settings, ui, permissions }); this.contextPercent = 0; }
   async request(model, messages, signal, onDelta, tools, effort = this.settings.effort) {
-    const result = await completion({ key: this.key, model, variant: this.settings.variant, effort, messages, tools, signal, onDelta, onRetry: attempt => this.ui.info(`Connection busy; retrying (${attempt}/3)…`) });
-    const usage = recordUsage(this.dir, this.session, model, result.usage, messages, result.content + result.reasoning + JSON.stringify(result.toolCalls));
+    this.ui.startActivity?.(`${model} · ${this.settings.variant} · think ${effort} · ${money(this.session.cost)} session · ctx ${this.contextPercent}%`);
+    let result;
+    try {
+      result = await completion({ key: this.key, model, variant: this.settings.variant, effort, messages, tools, signal, onDelta, onRetry: attempt => this.ui.info(`Connection busy; retrying (${attempt}/3)…`) });
+    } finally { this.ui.stopActivity?.(); }
+    const usage = recordUsage(this.dir, this.session, model, result.usage, messages, result.content + result.reasoning + (result.toolCalls.length ? JSON.stringify(result.toolCalls) : ''));
     this.turnUsage.push(usage);
     return result;
   }
@@ -737,6 +778,7 @@ async function main(argv = process.argv.slice(2)) {
       ui.info('Welcome to Axon. Bring your own API key; it stays on this device.');
       ui.info(`Validation endpoint: ${endpoint()}\nYour key will be stored privately in ${dir}`);
       if (process.env.AXON_API_KEY) ui.info('Note: AXON_API_KEY overrides the saved key in subsequent runs.');
+      if (!input.terminal) throw new Error('Secure key entry needs a TTY with TERM other than dumb. Set AXON_API_KEY instead.');
       const entered = (await input.ask('API key (hidden): ', true)).trim();
       if (!entered) throw new Error('No key entered. Nothing was saved.');
       ui.info('Validating with a tiny, billable request…'); controller = new AbortController();
@@ -818,7 +860,7 @@ async function main(argv = process.argv.slice(2)) {
             case '/clear': engine.session.clear(); pending = []; engine.contextPercent = 0; say('Context cleared. Transcript and persistent memory retained.'); break;
             case '/cost': {
               const all = usageSummary(dir), current = usageSummary(dir, engine.session.id);
-              say(`Session: ${money(current.total)} · All-time: ${money(all.total)}${all.estimated ? ' (includes estimates)' : ''}\n` + Object.entries(all.models).map(([model, row]) => `${model}: ${row.prompt_tokens} in / ${row.completion_tokens} out · ${money(row.cost)} · ${row.requests} requests`).join('\n'));
+              say(`Session: ${money(current.total)} · All-time: ${money(all.total)}${all.estimated ? ' (includes estimates)' : ''}\n` + Object.entries(all.models).map(([model, row]) => `${model}: session ${money(current.models[model]?.cost || 0)} / all-time ${money(row.cost)} · ${row.prompt_tokens} in / ${row.completion_tokens} out · ${row.requests} requests`).join('\n'));
               ui.event('usage', { session: current, all_time: all }); break;
             }
             default: throw new Error(`Unknown command: ${command}. Try /help.`);

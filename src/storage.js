@@ -35,6 +35,9 @@ export class Session {
   append(record) {
     fs.appendFileSync(this.file, JSON.stringify({ at: new Date().toISOString(), ...record }) + '\n', { mode: 0o600 });
     this.apply(record);
+    if (record.type === 'title' || record.type === 'meta') {
+      privateWrite(this.file.replace(/\.jsonl$/, '.meta.json'), JSON.stringify({ title: this.title }));
+    }
   }
   add(message) { this.append({ type: 'message', message }); }
   setTitle(title) { this.append({ type: 'title', title: title.slice(0, 160) }); }
@@ -58,6 +61,7 @@ export function listSessions(dir) {
     for (const line of buf.toString().split('\n')) {
       try { const r = JSON.parse(line); if (['title', 'meta'].includes(r.type)) title = r.title; } catch {}
     }
+    title = readJSON(full.replace(/\.jsonl$/, '.meta.json'), { title }).title;
     return { id: file.slice(0, -6), title, updated: stat.mtime.toISOString() };
   }).sort((a, b) => b.updated.localeCompare(a.updated)).slice(0, 30);
 }

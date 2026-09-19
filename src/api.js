@@ -45,8 +45,13 @@ export async function* sseEvents(body) {
   if (data.length) yield data.join('\n');
 }
 
+const UNAVAILABLE = 'Axon inference is temporarily unavailable. Please try again in a moment.';
+
 export async function completion({ key, model, variant = 'crescent', effort = 'off', messages, tools, signal, onDelta = () => {}, onRetry = () => {}, maxTokens, retries = 3 }) {
-  const body = { model, variant, messages, stream: true, stream_options: { include_usage: true } };
+  // The live Axon endpoint currently drops tool_calls from SSE. Use its
+  // OpenAI JSON response for tool-enabled rounds; regular chat stays streamed.
+  const body = { model, variant, messages, stream: !tools?.length };
+  if (body.stream) body.stream_options = { include_usage: true };
   if (effort !== 'off') body.reasoning_effort = effort;
   if (tools?.length) { body.tools = tools; body.tool_choice = 'auto'; }
   if (maxTokens) body.max_tokens = maxTokens;
@@ -76,7 +81,7 @@ export async function completion({ key, model, variant = 'crescent', effort = 'o
     }
     throw new APIError(response.status, detail);
   }
-  let content = '', reasoning = '', usage = null, finishReason = null;
+  let content = '', reasoning = '', usage = null, finishReason = null, done = false;
   const calls = new Map();
   const apply = chunk => {
     if (chunk.error) throw new Error(chunk.error.message || 'API stream error');
@@ -85,7 +90,7 @@ export async function completion({ key, model, variant = 'crescent', effort = 'o
     if (!choice) return;
     if (choice.finish_reason) finishReason = choice.finish_reason;
     const delta = choice.delta || choice.message || {};
-    if (typeof delta.content === 'string') { content += delta.content; onDelta('content', delta.content); }
+    if (typeof delta.content === 'string') { content += delta.content; if (delta.content !== UNAVAILABLE) onDelta('content', delta.content); }
     if (typeof delta.reasoning_content === 'string') { reasoning += delta.reasoning_content; onDelta('reasoning', delta.reasoning_content); }
     for (const part of delta.tool_calls || []) {
       const index = part.index ?? 0;
@@ -103,13 +108,20 @@ export async function completion({ key, model, variant = 'crescent', effort = 'o
     apply(obj);
   } else {
     for await (const event of sseEvents(response.body)) {
-      if (event.trim() === '[DONE]') break;
+      if (event.trim() === '[DONE]') { done = true; break; }
       let obj;
       try { obj = JSON.parse(event); } catch { throw new Error('Malformed JSON in the Axon event stream. The partial answer was preserved.'); }
       apply(obj);
     }
   }
+  if (!finishReason && !done) throw new Error('The response stream ended early. Partial output was preserved; retry your request.');
+  if (content.trim() === UNAVAILABLE) {
+    if (retries <= 0) throw new Error('Axon inference is temporarily unavailable. Please retry shortly.');
+    onRetry(4 - retries);
+    await sleep(1000, undefined, { signal });
+    return completion({ key, model, variant, effort, messages, tools, signal, onDelta, onRetry, maxTokens, retries: retries - 1 });
+  }
   const toolCalls = [...calls.values()];
-  if (!content && !toolCalls.length && !finishReason) throw new Error('Axon returned an empty or interrupted response.');
+  if (!content && !toolCalls.length) throw new Error('Axon returned an empty or interrupted response.');
   return { content, reasoning, toolCalls, usage, finishReason };
 }

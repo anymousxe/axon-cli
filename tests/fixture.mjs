@@ -14,8 +14,9 @@ export async function startFixture() {
     const system = body.messages.find(m => m.role === 'system')?.content || '';
     if (text?.includes('FIXTURE_402')) { res.writeHead(402); res.end('wallet empty'); return; }
     if (text?.includes('FIXTURE_429') && requests.filter(r => JSON.stringify(r.messages).includes('FIXTURE_429')).length < 3) { res.writeHead(429, { 'retry-after': '0' }); res.end('slow down'); return; }
-    res.writeHead(200, { 'content-type': 'text/event-stream' });
-    const emit = object => res.write(`data: ${JSON.stringify(object)}\r\n\r\n`);
+    const chunks = [];
+    res.writeHead(200, { 'content-type': body.stream ? 'text/event-stream' : 'application/json' });
+    const emit = object => body.stream ? res.write(`data: ${JSON.stringify(object)}\r\n\r\n`) : chunks.push(object);
     if (body.reasoning_effort) emit({ choices: [{ delta: { reasoning_content: 'I will check this carefully. ' } }] });
     const hasImage = body.messages.some(m => Array.isArray(m.content) && m.content.some(p => p.type === 'image_url'));
     if (hasImage && body.model !== 'axon-1.8-flash') { emit({ error: { message: 'text-only model received image' } }); res.end(); return; }
@@ -37,7 +38,13 @@ export async function startFixture() {
       emit({ choices: [{ delta: {}, finish_reason: 'stop' }] });
     }
     emit({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
-    res.write('data: [DONE]\r\n\r\n'); res.end();
+    if (body.stream) res.write('data: [DONE]\r\n\r\n');
+    else {
+      const message = { role: 'assistant', content: answer || null };
+      if (!answer) message.tool_calls = [{ id: 'call_echo', type: 'function', function: { name: 'run_command', arguments: JSON.stringify({ command: 'echo AXON_TOOL_OK' }) } }];
+      res.write(JSON.stringify({ choices: [{ message, finish_reason: answer ? 'stop' : 'tool_calls' }], usage: { prompt_tokens: 100, completion_tokens: 20 } }));
+    }
+    res.end();
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   return { requests, url: `http://127.0.0.1:${server.address().port}/api/v1`, close: () => new Promise(resolve => server.close(resolve)) };

@@ -82,6 +82,7 @@ export async function main(argv = process.argv.slice(2)) {
       ui.info('Welcome to Axon. Bring your own API key; it stays on this device.');
       ui.info(`Validation endpoint: ${endpoint()}\nYour key will be stored privately in ${dir}`);
       if (process.env.AXON_API_KEY) ui.info('Note: AXON_API_KEY overrides the saved key in subsequent runs.');
+      if (!input.terminal) throw new Error('Secure key entry needs a TTY with TERM other than dumb. Set AXON_API_KEY instead.');
       const entered = (await input.ask('API key (hidden): ', true)).trim();
       if (!entered) throw new Error('No key entered. Nothing was saved.');
       ui.info('Validating with a tiny, billable request…'); controller = new AbortController();
@@ -163,7 +164,7 @@ export async function main(argv = process.argv.slice(2)) {
             case '/clear': engine.session.clear(); pending = []; engine.contextPercent = 0; say('Context cleared. Transcript and persistent memory retained.'); break;
             case '/cost': {
               const all = usageSummary(dir), current = usageSummary(dir, engine.session.id);
-              say(`Session: ${money(current.total)} · All-time: ${money(all.total)}${all.estimated ? ' (includes estimates)' : ''}\n` + Object.entries(all.models).map(([model, row]) => `${model}: ${row.prompt_tokens} in / ${row.completion_tokens} out · ${money(row.cost)} · ${row.requests} requests`).join('\n'));
+              say(`Session: ${money(current.total)} · All-time: ${money(all.total)}${all.estimated ? ' (includes estimates)' : ''}\n` + Object.entries(all.models).map(([model, row]) => `${model}: session ${money(current.models[model]?.cost || 0)} / all-time ${money(row.cost)} · ${row.prompt_tokens} in / ${row.completion_tokens} out · ${row.requests} requests`).join('\n'));
               ui.event('usage', { session: current, all_time: all }); break;
             }
             default: throw new Error(`Unknown command: ${command}. Try /help.`);

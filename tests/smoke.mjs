@@ -18,7 +18,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-smoke-'));
 const env = { ...process.env, AXON_CONFIG_DIR: dir, AXON_API_KEY: live ? process.env.AXON_API_KEY : 'fixture-key', NO_COLOR: '1' };
 if (fixture) env.AXON_BASE_URL = fixture.url;
 const run = (args, input = '', timeout = 90000) => new Promise((resolve, reject) => {
-  const child = spawn(process.execPath, ['bin/axon.js', ...args], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['bin/axon.mjs', ...args], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
   let out = '', err = '';
   const timer = setTimeout(() => { child.kill(); reject(new Error(`Timed out: ${args.join(' ')}`)); }, timeout);
   child.stdout.on('data', chunk => out += chunk); child.stderr.on('data', chunk => err += chunk);

@@ -6,8 +6,12 @@ import { TOOL_DEFINITIONS, handleTool } from './tools.js';
 export class Engine {
   constructor({ dir, key, session, settings, ui, permissions }) { Object.assign(this, { dir, key, session, settings, ui, permissions }); this.contextPercent = 0; }
   async request(model, messages, signal, onDelta, tools, effort = this.settings.effort) {
-    const result = await completion({ key: this.key, model, variant: this.settings.variant, effort, messages, tools, signal, onDelta, onRetry: attempt => this.ui.info(`Connection busy; retrying (${attempt}/3)…`) });
-    const usage = recordUsage(this.dir, this.session, model, result.usage, messages, result.content + result.reasoning + JSON.stringify(result.toolCalls));
+    this.ui.startActivity?.(`${model} · ${this.settings.variant} · think ${effort} · ${money(this.session.cost)} session · ctx ${this.contextPercent}%`);
+    let result;
+    try {
+      result = await completion({ key: this.key, model, variant: this.settings.variant, effort, messages, tools, signal, onDelta, onRetry: attempt => this.ui.info(`Connection busy; retrying (${attempt}/3)…`) });
+    } finally { this.ui.stopActivity?.(); }
+    const usage = recordUsage(this.dir, this.session, model, result.usage, messages, result.content + result.reasoning + (result.toolCalls.length ? JSON.stringify(result.toolCalls) : ''));
     this.turnUsage.push(usage);
     return result;
   }
