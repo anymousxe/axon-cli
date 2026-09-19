@@ -67,7 +67,7 @@ try {
   if (fixture) process.env.AXON_BASE_URL = fixture.url;
   let toolSeen = false;
   const ui = { begin() {}, finish() {}, info() {}, event() {}, answer() {}, reasoning() {}, tool(name, args, output) { if (name === 'run_command' && output.includes('AXON_TOOL_OK') && output.includes('exit 0')) toolSeen = true; } };
-  const engine = new Engine({ dir, key: env.AXON_API_KEY, session: new Session(dir), settings: { model: 'axon-1.8-flash', variant: 'stellar', effort: 'off', showThinking: false }, ui, permissions: new Permissions(async () => 'y', ui, true) });
+  const engine = new Engine({ dir, key: env.AXON_API_KEY, session: new Session(dir), settings: { model: 'axon-1.8-flash', effort: 'off', showThinking: false }, ui, permissions: new Permissions(async () => 'y', ui, true) });
   await engine.turn(live ? 'Use the run_command tool to execute exactly: echo AXON_TOOL_OK. Then report the output. Do not just describe running it.' : 'FIXTURE_TOOL');
   assert.ok(toolSeen, 'Model did not execute the echo tool');
   if (oldBase === undefined) delete process.env.AXON_BASE_URL; else process.env.AXON_BASE_URL = oldBase;

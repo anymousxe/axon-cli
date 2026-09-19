@@ -9,7 +9,8 @@ import { sseEvents, completion, endpoint, APIError } from '../src/api.js';
 import { Session, contextFor, remember, forget, memoryText, usageSummary, recordUsage, listSessions } from '../src/storage.js';
 import { imagePart } from '../src/images.js';
 import { Permissions, executeTool, handleTool } from '../src/tools.js';
-import { safeText, UI } from '../src/ui.js';
+import { safeText } from '../src/render.js';
+import { UI } from '../src/ui.js';
 import { parseArgs } from '../src/cli.js';
 import { startFixture } from './fixture.mjs';
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'axon-unit-'));
@@ -20,7 +21,7 @@ test('model pricing, exact usage arithmetic, formatting and settings', () => {
   assert.equal(costFor('axon-1.8-lightning', { prompt_tokens: 1000, completion_tokens: 500 }), 0.00007);
   assert.equal(costFor('axon-1.6-pro', { prompt_tokens: 1e6, completion_tokens: 2e6 }), 0.95);
   assert.equal(money(0.0042), '$0.0042'); assert.equal(money(1.235), '$1.24');
-  assert.throws(() => validateSettings({ model: 'unknown', variant: 'crescent', effort: 'off' }), /Model/);
+  assert.throws(() => validateSettings({ model: 'unknown', effort: 'off' }), /Model/);
 });
 
 test('portable paths, private config, no environment mutation', () => {

@@ -34,7 +34,7 @@ test('aborting a partial stream saves the partial assistant response and keeps c
     }, async () => {
       const session = new Session(dir);
       const ui = { ...silent, answer: () => controller.abort() };
-      const engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-1.8-flash', variant: 'crescent', effort: 'off' }, ui, permissions: new Permissions(null, ui) });
+      const engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-1.8-flash', effort: 'off' }, ui, permissions: new Permissions(null, ui) });
       await assert.rejects(engine.turn('hello', [], controller.signal));
       const restored = new Session(dir, session.id);
       assert.equal(restored.messages.length, 2);
