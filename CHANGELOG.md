@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 — 2026-09-19
+
+- Simplified model selection and request schema; removed obsolete server-specific selectors.
+- Ice-blue brand palette, persisted dark/light/auto themes, 256-color and truecolor output.
+- Streaming fenced-code renderer with JS/TS/Python/JSON/SQL/Bash/sh lexical highlighting.
+- Permission-gated exact-match `edit_file` tool and colored write/edit unified diffs.
+- Elapsed spinner, amber thinking pulse, 300 ms startup fade, completion pulse, colored status.
+- Raw-key slash menu above input: fuzzy filtering, arrows, Tab/Enter completion, Esc dismissal,
+  priced model menus, effort/theme/recent-chat argument menus, and bracketed-paste safety.
+- Added `/btw`, `/fast`, `/compact`, `/retry`, `/copy`, `/usage`, `/status`, `/theme`,
+  and `/hide-thinking`; retained all v1 commands, image routing and JSON/pipe modes.
+- Transactional compaction and retry records preserve original transcripts on disk.
+- Terminal capability fallbacks, hidden-key input isolation, and clipboard provider fallbacks.
+- Expanded regression coverage and live API smoke verification; rebuilt single-file bundle.
+
 ## 1.0.0 — 2026-09-19
 
 First public release.
@@ -7,7 +22,7 @@ First public release.
 - Zero-dependency Node CLI and portable, single-file `axon.mjs` bundle.
 - Streaming REPL, prompts, pipes, JSON events, continue/resume, and saved JSONL chats.
 - Hidden-key onboarding, tiny live validation, private config, environment overrides.
-- Four models, four variants, opt-in reasoning with visible/hideable thinking.
+- Four models, opt-in reasoning with visible/hideable thinking.
 - Native Flash vision and Flash-to-text image routing for non-vision models.
 - Clipboard images on Wayland, X11, and Windows; explicit path attachments everywhere.
 - Permission-gated command and filesystem tools, bounded outputs, cancellation, and eight-round limit.

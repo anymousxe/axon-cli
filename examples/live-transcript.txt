@@ -3,17 +3,17 @@
   /help for commands · /img for clipboard · Ctrl-C cancels
 
 
-axon-1.8-flash · crescent · think off · $0.0000 session · ctx 0%
+axon-1.8-flash · think off · $0.0000 session · ctx 0%
 Memory saved for future turns and sessions.
 
-axon-1.8-flash · crescent · think off · $0.0000 session · ctx 0%
+axon-1.8-flash · think off · $0.0000 session · ctx 0%
 Your favorite color is teal.
 
 2.1s · ~99 in / 7 out tokens · +$0.0000 (estimated)
 
-axon-1.8-flash · crescent · think off · $0.0000 session · ctx 0%
+axon-1.8-flash · think off · $0.0000 session · ctx 0%
 Session: $0.0000 · All-time: $0.0000 (includes estimates)
 axon-1.8-flash: session $0.0000 / all-time $0.0000 · 99 in / 7 out · 1 requests
 
-axon-1.8-flash · crescent · think off · $0.0000 session · ctx 0%
+axon-1.8-flash · think off · $0.0000 session · ctx 0%
 Chat saved: 20260919T215942-39f63f
