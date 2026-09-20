@@ -1,3 +1,6 @@
+## 1.3.1
+- Chats: one-shots no longer create saved chats (--save to keep); REPL auto-continues last chat (--new for fresh); dangling last-chat pointer self-heals
+- Retries: transient Vercel-checkpoint 403s now retry silently instead of printing Access denied
 # Changelog
 
 ## 1.3.0 — 2026-09-20

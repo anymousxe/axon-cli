@@ -72,7 +72,8 @@ export async function completion({ key, model, effort = 'off', messages, tools, 
     }
     if (response.ok) break;
     const detail = await response.text();
-    if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+    const checkpoint403 = response.status === 403 && /<html|security checkpoint|challenge/i.test(detail.slice(0, 400));
+    if ((response.status === 429 || response.status >= 500 || checkpoint403) && attempt < retries) {
       const retryHeader = response.headers.get('retry-after');
       const delay = retryHeader && /^\d+(\.\d+)?$/.test(retryHeader) ? Number(retryHeader) * 1000 : 500 * 2 ** attempt;
       onRetry(attempt + 1);

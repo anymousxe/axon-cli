@@ -13,7 +13,9 @@ import { SLASH_HELP, isCommandLine } from './commands.js';
 import { copyText } from './clipboard.js';
 
 export const VERSION = '1.3.0';
-const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
+const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
+      --new             Start a fresh chat instead of continuing the last one
+      --save            Persist a one-shot run as a saved chat\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
 
 
 export function toolsDefault(opts, interactive) { return opts.tools ?? interactive; }
@@ -35,6 +37,8 @@ export function parseArgs(argv) {
     else if (flag === '--repl') options.repl = true;
     else if (flag === '--tools') options.tools = true;
     else if (flag === '--no-tools') options.tools = false;
+    else if (flag === '--new') options.new = true;
+    else if (flag === '--save') options.save = true;
     else if (flag === '--hide-thinking') options.hideThinking = true;
     else if (['login', 'logout', 'whoami'].includes(flag) && !options.command) options.command = flag;
     else throw new Error(`Unknown argument: ${flag}. Run axon --help.`);
@@ -106,9 +110,12 @@ export async function main(argv = process.argv.slice(2)) {
       config = readConfig(dir);
     }
     const settings = settingsFrom(config, opts); validateSettings(settings); ui.setTheme(settings.theme);
-    const session = new Session(dir, opts.resume || (opts.continue ? lastSession(dir) : undefined));
     const interactive = Boolean(process.stdin.isTTY) && opts.prompt === undefined;
     const repl = interactive || opts.repl;
+    const safeLast = () => { try { return lastSession(dir); } catch { return undefined; } };
+    const autoId = opts.resume || (opts.continue ? lastSession(dir) : undefined) || (repl && !opts.new ? safeLast() : undefined);
+    const session = new Session(dir, autoId, { ephemeral: !repl && !opts.save });
+    if (repl && !opts.resume && !opts.continue && !opts.new && autoId) ui.info(`continuing ${session.id} · /new for a fresh chat`);
     if (repl && !input) input = new Input(interrupt);
     if (!input && process.stdin.isTTY) input = new Input(interrupt);
     const permissions = new Permissions(process.stdin.isTTY && input ? prompt => input.ask(prompt) : null, ui, toolsDefault(opts, interactive));

@@ -5,7 +5,7 @@ import { ensureDir, privateWrite, readJSON } from './paths.js';
 import { costFor, tokensFor, CONTEXT_TOKENS } from './models.js';
 
 export class Session {
-  constructor(dir, id) {
+  constructor(dir, id, opts = {}) {
     this.dir = dir;
     ensureDir(path.join(dir, 'chats'));
     this.id = id || `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}-${crypto.randomBytes(3).toString('hex')}`;
@@ -33,8 +33,9 @@ export class Session {
         this.apply(record);
       }
       if (!recovered && raw && !raw.endsWith('\n')) fs.appendFileSync(this.file, '\n');
-    } else this.append({ type: 'meta', title: this.title, created: new Date().toISOString() });
-    privateWrite(path.join(dir, 'last-chat'), this.id);
+    } else if (!opts.ephemeral) this.append({ type: 'meta', title: this.title, created: new Date().toISOString() });
+    this.ephemeral = Boolean(opts.ephemeral);
+    if (!this.ephemeral) privateWrite(path.join(dir, 'last-chat'), this.id);
   }
   apply(record) {
     this.records.push(record);
@@ -47,6 +48,7 @@ export class Session {
     if (record.type === 'rewind') this.messages = this.messages.slice(0, record.index);
   }
   append(record) {
+    if (this.ephemeral) { this.apply(record); return; }
     fs.appendFileSync(this.file, JSON.stringify({ at: new Date().toISOString(), ...record }) + '\n', { mode: 0o600 });
     this.apply(record);
     if (record.type === 'title' || record.type === 'meta') {
@@ -58,8 +60,13 @@ export class Session {
   clear() { this.append({ type: 'clear' }); }
 }
 export function lastSession(dir) {
-  try { return fs.readFileSync(path.join(dir, 'last-chat'), 'utf8').trim(); }
-  catch { throw new Error('No previous chat yet. Start with `axon`.'); }
+  const exists = id => id && /^[a-zA-Z0-9_-]+$/.test(id) && fs.existsSync(path.join(dir, 'chats', id + '.jsonl'));
+  let pointer = '';
+  try { pointer = fs.readFileSync(path.join(dir, 'last-chat'), 'utf8').trim(); } catch {}
+  if (exists(pointer)) return pointer;
+  const recent = listSessions(dir).sort((a, b) => (b.modified || 0) - (a.modified || 0))[0];
+  if (recent) return recent.id;
+  throw new Error('No previous chat yet. Start with `axon`.');
 }
 export function listSessions(dir) {
   const folder = path.join(dir, 'chats');
