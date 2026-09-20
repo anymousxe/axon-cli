@@ -61,12 +61,15 @@ export class Palette {
 const WORDS = {
   js: 'async await break case catch class const continue debugger default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while yield',
   py: 'and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield',
+  go: 'package import func type struct interface map chan go defer select range var const if else for return nil true false',
+  rust: 'fn let mut pub impl trait struct enum use mod crate self Self match if else loop while for in return async await move unsafe true false',
+  c: 'int char void float double struct enum typedef const static unsigned return if else for while switch case break include define',
   json: 'true false null',
   sql: 'select from where insert into values update set delete create alter drop table join inner left right outer on as and or not null is group by order having limit offset union all distinct asc desc case when then else end exists primary key references',
   bash: 'if then else elif fi for while do done case esac in function select until echo export local readonly return exit source sudo cd',
 };
 export function highlight(code, language, palette) {
-  const lang = ({ javascript: 'js', typescript: 'js', ts: 'js', jsx: 'js', tsx: 'js', python: 'py', sh: 'bash', shell: 'bash' })[language] || language;
+  const lang = ({ javascript: 'js', typescript: 'js', ts: 'js', jsx: 'js', tsx: 'js', python: 'py', sh: 'bash', shell: 'bash', golang: 'go', rs: 'rust', cpp: 'c', java: 'c' })[language] || language;
   if (!WORDS[lang]) return safeText(code);
   const keywords = new Set((WORDS[lang] + (lang === 'js' ? ' interface type implements public private protected readonly enum namespace declare abstract string number boolean unknown never any' : '')).split(' '));
   // Single lexical pass: generated ANSI is never fed back into the tokenizer.
@@ -93,31 +96,123 @@ export function unifiedDiff(before, after, file = 'file') {
   const lo = Math.max(0, start - 3), hiA = Math.min(a.length, a.length - end + 3), hiB = Math.min(b.length, b.length - end + 3);
   return [`--- a/${safeText(file)}`, `+++ b/${safeText(file)}`, `@@ -${a.length ? lo + 1 : 0},${hiA - lo} +${b.length ? lo + 1 : 0},${hiB - lo} @@`, ...a.slice(lo, start).map(x => ' ' + x), ...a.slice(start, a.length - end).map(x => '-' + x), ...b.slice(start, b.length - end).map(x => '+' + x), ...a.slice(a.length - end, hiA).map(x => ' ' + x), ...(before.endsWith('\n') === after.endsWith('\n') ? [] : ['\\ No newline at end of file (changed)'])].join('\n');
 }
-// Prose streams immediately; only fences and code lines wait for a newline.
+// Generated ANSI is applied only after sanitizing the source.
+export function gradient(text, palette, phase = 0) {
+  if (!palette.enabled || !palette.truecolor) return palette.paint('primary', text);
+  return [...safeText(text)].map((char, i) => {
+    const hue = phase + i * 0.13;
+    const rgb = [0, 2.1, 4.2].map(offset => Math.round((palette.light ? 65 : 160) + (palette.light ? 55 : 85) * Math.sin(hue + offset)));
+    return `\x1b[38;2;${rgb.join(';')}m${char}`;
+  }).join('') + '\x1b[0m';
+}
+function decoration(palette, code, text) { return palette.enabled ? `\x1b[${code}m${text}\x1b[0m` : text; }
+export function inlineMarkdown(text, palette, depth = 0) {
+  text = safeText(text);
+  if (depth > 8) return text;
+  const pattern = /(`+)([^`]*?)\1|\*\*(.+?)\*\*(?!\*)|__(.+?)__(?!_)|~~(.+?)~~|\*([^*\n]+)\*|_([^_\n]+)_|\[([^\]]+)\]\(([^\s)]+)\)/g;
+  return text.replace(pattern, (whole, ticks, code, bold, bold2, strike, italic, italic2, label, url) => {
+    if (ticks) return decoration(palette, palette.light ? '48;5;254;38;5;25' : '48;5;236;38;5;117', code);
+    if (label) return decoration(palette, '4', inlineMarkdown(label, palette, depth + 1)) + palette.paint('meta', ` (${url})`);
+    return decoration(palette, bold || bold2 ? (palette.light ? '1;30' : '1;97') : strike ? '2;9' : '3', inlineMarkdown(bold || bold2 || strike || italic || italic2, palette, depth + 1));
+  });
+}
+export function markdownLine(line, palette, width = 80) {
+  const heading = line.match(/^ {0,3}(#{1,6})\s+(.+?)\s*#*$/);
+  if (heading) {
+    const title = inlineMarkdown(heading[2], new Palette({ color: false }));
+    return decoration(palette, '1;4', gradient(title, palette));
+  }
+  if (/^\s{0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/.test(line)) return palette.paint('meta', '─'.repeat(Math.min(60, width)));
+  const quote = line.match(/^\s*>\s?(.*)$/);
+  if (quote) return palette.paint('meta', '│ ') + decoration(palette, '2', inlineMarkdown(quote[1], palette));
+  const list = line.match(/^(\s*)([-+*]|\d+[.)])\s+(.*)$/);
+  if (list) return list[1] + palette.paint('primary', /\d/.test(list[2]) ? list[2] : '•') + ' ' + inlineMarkdown(list[3], palette);
+  return inlineMarkdown(line, palette);
+}
+function tableCells(line) { return line.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map(s => s.trim().replace(/\\\|/g, '|')); }
+export function markdownTable(lines, palette) {
+  const rows = lines.map(tableCells);
+  const divider = rows.findIndex(row => row.every(cell => /^:?-{3,}:?$/.test(cell)));
+  if (divider < 0) return lines.map(line => markdownLine(line, palette)).join('\n');
+  const aligns = rows[divider].map(cell => cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : 'left');
+  const data = rows.filter((_, i) => i !== divider);
+  const widths = Array.from({ length: Math.max(...rows.map(r => r.length)) }, (_, i) => Math.min(48, Math.max(...data.map(r => displayWidth(inlineMarkdown(r[i] || '', new Palette({ color: false })))))));
+  const border = palette.paint('meta', '│');
+  return rows.map((row, index) => {
+    if (index === divider) return palette.paint('meta', '├' + widths.map(w => '─'.repeat(w + 2)).join('┼') + '┤');
+    return border + widths.map((width, i) => {
+      const value = inlineMarkdown(row[i] || '', palette);
+      const size = displayWidth(value), padding = Math.max(0, width - size);
+      const left = aligns[i] === 'right' ? padding : aligns[i] === 'center' ? Math.floor(padding / 2) : 0;
+      return ' ' + ' '.repeat(left) + (size > width ? fitCells(value, width) : value) + ' '.repeat(padding - left) + ' ';
+    }).join(border) + border;
+  }).join('\n');
+}
+export function renderMarkdown(text, palette, width = 80) {
+  if (!palette.enabled) return safeText(text);
+  const lines = safeText(text).split('\n'), out = []; let fence = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], match = line.match(/^ {0,3}(`{3,}|~{3,})([\w+-]*)\s*$/);
+    if (match && (!fence || (match[1][0] === fence.char && match[1].length >= fence.length && !match[2]))) {
+      if (fence) { out.push(palette.paint('meta', '└────────────────────')); fence = null; }
+      else { fence = { char: match[1][0], length: match[1].length, lang: match[2].toLowerCase() }; out.push(palette.paint('meta', `┌─ ${match[2] || 'code'} ──────────────`)); }
+    } else if (fence) out.push(palette.paint('meta', '│ ') + highlight(line, fence.lang, palette));
+    else if (line.includes('|') && lines[i + 1]?.includes('|') && tableCells(lines[i + 1]).every(c => /^:?-{3,}:?$/.test(c))) {
+      const table = [line, lines[++i]];
+      while (lines[i + 1]?.includes('|')) table.push(lines[++i]);
+      out.push(markdownTable(table, palette));
+    } else out.push(markdownLine(line, palette, width));
+  }
+  return out.join('\n');
+}
+// Repaint only the current line/table, not the whole answer or scrollback.
+// Plain output remains byte-for-byte Markdown for pipes and NO_COLOR.
 export class AnswerRenderer {
-  constructor(write, palette) { this.write = write; this.palette = palette; this.line = ''; this.fence = null; this.prose = false; }
+  constructor(write, palette, width = () => process.stdout.columns || 80) {
+    this.write = write; this.palette = palette; this.width = width; this.line = ''; this.fence = null; this.previewRows = 0; this.table = [];
+  }
+  erasePreview() {
+    if (this.previewRows) this.write('\r' + (this.previewRows > 1 ? `\x1b[${this.previewRows - 1}A` : '') + '\x1b[J');
+    this.previewRows = 0;
+  }
+  preview(text) {
+    this.erasePreview();
+    const limit = Math.max(1, (process.stdout.rows || 24) - 4);
+    const physicalRows = text.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(displayWidth(line) / Math.max(1, this.width()))), 0);
+    if (physicalRows > limit) text = fitCells(safeText(text).replace(/\n/g, ' '), Math.max(1, this.width() - 4)) + ' …';
+    this.write(text);
+    this.previewRows = text.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(displayWidth(line) / Math.max(1, this.width()))), 0);
+  }
   push(text) {
     if (!this.palette.enabled) { this.write(safeText(text)); return; }
     for (const char of safeText(text)) {
       if (char === '\n') { this.flushLine(true); continue; }
-      if (this.prose) this.write(char);
-      else {
-        this.line += char;
-        if (!this.fence && !/^\s{0,3}`{0,3}[^`]*$/.test(this.line)) this.prose = true;
-        if (!this.fence && !/^ {0,3}`/.test(this.line) && !/^ {0,3}$/.test(this.line)) this.prose = true;
-        if (this.prose) { this.write(this.line); this.line = ''; }
-      }
+      this.line += char;
     }
+    if (this.line) this.preview(this.current());
+  }
+  current() {
+    if (this.table.length) return markdownTable([...this.table, ...(this.line ? [this.line] : [])], this.palette);
+    return this.fence ? this.palette.paint('meta', '│ ') + highlight(this.line, this.fence.lang, this.palette) : markdownLine(this.line, this.palette, this.width());
   }
   flushLine(newline) {
-    const match = this.line.match(/^ {0,3}(`{3,})([\w+-]*)\s*$/);
-    if (!this.prose && match && (!this.fence || (match[1].length >= this.fence.length && !match[2]))) {
+    if (!this.fence && this.line.includes('|')) {
+      this.table.push(this.line); this.line = ''; this.preview(markdownTable(this.table, this.palette)); return;
+    }
+    this.erasePreview();
+    if (this.table.length) { this.write(markdownTable(this.table, this.palette) + '\n'); this.table = []; }
+    const match = this.line.match(/^ {0,3}(`{3,}|~{3,})([\w+-]*)\s*$/);
+    if (match && (!this.fence || (match[1][0] === this.fence.char && match[1].length >= this.fence.length && !match[2]))) {
       if (this.fence) { this.write(this.palette.paint('meta', '└────────────────────')); this.fence = null; }
-      else { this.fence = { length: match[1].length, lang: match[2].toLowerCase() }; this.write(this.palette.paint('meta', `┌─ ${match[2] || 'code'} ──────────────`)); }
-    } else if (this.fence) this.write(this.palette.paint('meta', '│ ') + highlight(this.line, this.fence.lang, this.palette));
-    else if (this.line) this.write(this.line);
-    if (newline) this.write('\n');
-    this.line = ''; this.prose = false;
+      else { this.fence = { char: match[1][0], length: match[1].length, lang: match[2].toLowerCase() }; this.write(this.palette.paint('meta', `┌─ ${match[2] || 'code'} ──────────────`)); }
+    } else this.write(this.current());
+    if (newline) this.write('\n'); this.line = '';
   }
-  finish() { if (this.line) this.flushLine(false); if (this.fence) { this.write('\n' + this.palette.paint('meta', '└────────────────────')); this.fence = null; } }
+  finish() {
+    if (!this.palette.enabled) return;
+    if (this.line || this.table.length) this.flushLine(false);
+    if (this.table.length) { this.erasePreview(); this.write(markdownTable(this.table, this.palette)); this.table = []; }
+    this.previewRows = 0;
+    if (this.fence) { this.write('\n' + this.palette.paint('meta', '└────────────────────')); this.fence = null; }
+  }
 }

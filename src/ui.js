@@ -1,4 +1,4 @@
-import { safeText, terminalCaps, Palette, AnswerRenderer, colorDiff, fitCells } from './render.js';
+import { safeText, terminalCaps, Palette, AnswerRenderer, colorDiff, fitCells, gradient, renderMarkdown } from './render.js';
 export class UI {
   constructor({ json = false, color = terminalCaps().color, theme = 'auto' } = {}) {
     this.json = json; this.color = color && !json;
@@ -10,17 +10,17 @@ export class UI {
   setTheme(theme) { this.palette.setTheme(theme); this.answerPalette.setTheme(theme); }
   async banner(version, id) {
     const mark = terminalCaps().unicode ? 'ϟ' : '*';
-    if (this.color) {
-      for (const intensity of ['2', '22', '1']) {
-        process.stderr.write('\r\x1b[2K' + this.style(intensity, this.palette.paint('primary', `  ${mark} AXON ${version}`)));
-        await new Promise(resolve => setTimeout(resolve, 100));
+    if (this.color && this.palette.truecolor) {
+      for (const intensity of [0, 1, 2, 3, 4, 5]) {
+        process.stderr.write('\r\x1b[2K' + gradient(`  ${mark} AXON ${version}`, this.palette, intensity * 0.45));
+        await new Promise(resolve => setTimeout(resolve, 83));
       }
       process.stderr.write('\n');
     } else this.info(`  ${mark} AXON ${version}`);
-    this.info(`  ${id}\n  /help for commands · / for menu · Ctrl-C cancels\n`);
+    this.info(`  ${id}\n  /help · / for menu · Ctrl+T inspector · Ctrl-C cancels\n`);
   }
   startActivity(text, thinking = false) {
-    if (!this.color || this.json) return;
+    if (!this.color || this.json || !this.palette.truecolor) return;
     this.stopActivity();
     let frame = 0; const start = Date.now();
     const frames = terminalCaps().unicode ? ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] : ['|', '/', '-', '\\'];
@@ -28,17 +28,19 @@ export class UI {
       const label = thinking ? this.style(frame % 8 < 4 ? '2' : '1', '∴ thinking') : frames[frame % frames.length];
       frame++;
       if ((process.stderr.columns || 80) < 25) { process.stderr.write('\r\x1b[2K' + this.palette.paint('primary', fitCells(`${frames[frame % frames.length]} ${((Date.now() - start) / 1000).toFixed(1)}s`, Math.max(0, process.stderr.columns - 1)))); return; }
-      process.stderr.write('\r\x1b[2K' + this.palette.paint(thinking ? 'thinking' : 'primary', `${label} ${((Date.now() - start) / 1000).toFixed(1)}s`) + ' ' + this.palette.paint('meta', fitCells(safeText(text).replace(/\n/g, ' '), Math.max(0, (process.stderr.columns || 80) - 25))));
+      process.stderr.write('\r\x1b[2K' + gradient(`${label} ${((Date.now() - start) / 1000).toFixed(1)}s`, this.palette, frame * 0.18) + ' ' + gradient(fitCells(safeText(text).replace(/\n/g, ' '), Math.max(0, (process.stderr.columns || 80) - 25)), this.palette, frame * 0.12));
     };
-    draw(); this.activityTimer = setInterval(draw, 100); this.activityTimer.unref();
+    draw(); this.activityTimer = setInterval(draw, 83); this.activityTimer.unref();
   }
   stopActivity() {
     if (this.activityTimer) { clearInterval(this.activityTimer); this.activityTimer = null; process.stderr.write('\r\x1b[2K'); }
   }
   info(text = '') { this.stopActivity(); if (!this.json) process.stderr.write(this.palette.paint('meta', safeText(text)) + '\n'); }
+  markdown(text) { this.stopActivity(); if (!this.json) process.stderr.write(renderMarkdown(text, this.palette, process.stderr.columns || 80) + '\n'); }
   error(text) { this.stopActivity(); process.stderr.write(this.palette.paint('error', `Error: ${safeText(text)}`) + '\n'); }
   event(type, data = {}) { if (this.json) process.stdout.write(JSON.stringify({ type, ...data }) + '\n'); }
   begin() {
+    this.stopCaret();
     this.section = null; this.answerStarted = false; this.reasonBuffer = '';
     this.renderer = new AnswerRenderer(text => process.stdout.write(text), this.answerPalette);
   }
@@ -70,28 +72,43 @@ export class UI {
     this.section = 'answer'; this.answerStarted = true;
     this.renderer ||= new AnswerRenderer(text => process.stdout.write(text), this.answerPalette);
     this.renderer.push(text);
+    if (this.answerPalette.enabled && this.answerPalette.truecolor && !this.caretTimer) {
+      let frame = 0;
+      this.caretTimer = setInterval(() => {
+        if (this.renderer.line || this.renderer.table.length) this.renderer.preview(this.renderer.current() + gradient(' ▍', this.answerPalette, frame++ * 0.16));
+      }, 83); this.caretTimer.unref();
+    }
   }
+  stopCaret() { if (this.caretTimer) clearInterval(this.caretTimer); this.caretTimer = null; }
   finish() {
+    this.stopCaret();
     this.stopActivity();
     if (!this.json && this.section === 'reasoning') { this.flushReasoning(); process.stderr.write('\n'); }
     if (!this.json && this.answerStarted) { this.renderer?.finish(); process.stdout.write('\n'); }
     if (this.color && this.answerStarted) process.stderr.write(this.style('1', this.palette.paint('ok', '✓')) + '\n');
     this.section = null; this.answerStarted = false;
   }
-  async pulse() {
-    if (!this.color) return;
-    process.stderr.write(this.style('1', this.palette.paint('ok', '✓ complete')));
-    await new Promise(resolve => setTimeout(resolve, 100));
+  async pulse(locked = false) {
+    if (!this.color || !this.palette.truecolor) return;
+    if (locked) {
+      for (let frame = 0; frame < 5; frame++) {
+        process.stderr.write('\r\x1b[2K' + gradient(`${['✦  ·', '· ✧ ·', '✧ ✦ ✧', '· ✧ ·', '  ✦  '][frame]} 🔒 task complete`, this.palette, frame * 0.6));
+        await new Promise(resolve => setTimeout(resolve, 83));
+      }
+    } else process.stderr.write(this.style('1', this.palette.paint('ok', '✓ complete')));
+    await new Promise(resolve => setTimeout(resolve, 83));
     process.stderr.write('\r\x1b[2K' + this.palette.paint('meta', '✓ complete') + '\n');
   }
   diff(text) { this.stopActivity(); if (this.json) this.event('diff', { text }); else process.stderr.write(colorDiff(text, this.palette) + '\n'); }
   tool(name, args, result) {
     if (this.json) return this.event('tool', { name, arguments: args, result });
     const text = result.length > 1800 ? result.slice(0, 1800) + '\n… output truncated for display' : result;
-    this.info(`\n┌ ${name} ${JSON.stringify(args).slice(0, 300)}\n${text.split('\n').map(x => '│ ' + x).join('\n')}\n└`);
+    this.info(`\n┌ ${name} ${JSON.stringify(args).slice(0, 300)}`);
+    this.markdown(text);
+    this.info('└');
   }
   statusText(state, cost, context) {
-    return `${state.fast ? '⚡ ' : ''}${state.model} · ${state.effort} · ctx ${context}% · ${cost} session`;
+    return `${state.lockin ? '🔒 LOCKED-IN · ' : ''}${state.fast ? '⚡ ' : ''}${state.model} · ${state.effort} · ctx ${context}% · ${cost} session`;
   }
   status(state, cost, context) {
     this.stopActivity(); if (this.json) return;

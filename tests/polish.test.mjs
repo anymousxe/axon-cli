@@ -42,7 +42,7 @@ test('streaming markdown handles fragmented fences, live prose and plain fallbac
   const r = new AnswerRenderer(text => out += text, p);
   r.push('Hi'); assert.equal(out, 'Hi');
   for (const char of '\n```js\nconst x = 1;\n```\nDone') r.push(char);
-  r.finish(); assert.match(safeText(out), /┌─ js/); assert.match(safeText(out), /│ const x = 1;/); assert.match(safeText(out), /└.*\nDone/);
+  r.finish(); assert.match(safeText(out), /┌─ js/); assert.match(safeText(out), /│ const x = 1;/); assert.match(safeText(out), /└.*\nD/); assert.ok(safeText(out).endsWith('Done'));
   let plain = ''; const uncolored = new AnswerRenderer(text => plain += text, new Palette({ color: false }));
   uncolored.push('```py\nprint(1)\n```'); uncolored.finish(); assert.equal(plain, '```py\nprint(1)\n```');
 });
@@ -101,14 +101,16 @@ test('side questions stay out of context, compact survives resume, retry replace
     assert.equal(usageSummary(dir).models['axon-1.8-lightning'].requests, 1);
     await engine.retry(); assert.equal(session.messages.length, 2); assert.equal(new Session(dir, session.id).messages.length, 2);
     session.add({ role: 'user', content: 'Long context. '.repeat(1000) });
-    const result = await engine.compact(); assert.ok(result.saved > 0); assert.equal(session.messages.length, 0);
+    for (let i = 0; i < 6; i++) { session.add({ role: 'user', content: 'Recent ' + i }); session.add({ role: 'assistant', content: 'Noted' }); }
+    const recent = session.messages.slice(-12);
+    const result = await engine.compact(); assert.ok(result.saved > 0); assert.deepEqual(session.messages, recent);
     const resumed = new Session(dir, session.id); assert.ok(resumed.summary); assert.ok(resumed.records.some(r => r.type === 'message'));
     await engine.turn('continue'); assert.match(fixture.requests.at(-1).messages[0].content, /Conversation summary/);
     assert.ok(!JSON.stringify(fixture.requests.at(-1).messages).includes('side only'));
     session.clear(); assert.equal(new Session(dir, session.id).summary, '');
     await assert.rejects(engine.retry(), /No user/);
     // Assert the full request schema instead of allowing obsolete options to leak.
-    for (const req of fixture.requests) assert.ok(Object.keys(req).every(key => ['model', 'messages', 'stream', 'stream_options', 'reasoning_effort', 'tools', 'tool_choice', 'max_tokens', 'authorization'].includes(key)));
+    for (const req of fixture.requests) assert.ok(Object.keys(req).every(key => ['model', 'messages', 'stream', 'stream_options', 'include_reasoning', 'reasoning_effort', 'tools', 'tool_choice', 'max_tokens', 'authorization'].includes(key)));
   } finally { if (previous === undefined) delete process.env.AXON_BASE_URL; else process.env.AXON_BASE_URL = previous; await fixture.close(); fs.rmSync(dir, { recursive: true }); }
 });
 

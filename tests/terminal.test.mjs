@@ -46,6 +46,9 @@ assert out.find('/think') < out.rfind('axon > '), out
 out=run(base+"const x=await i.next('axon > '); i.close(); console.log('RESULT:'+JSON.stringify(x));", [b'\x1b[200~/clear\nsecond line\x1b[201~', b'\r'])
 assert 'RESULT:"/clear\\nsecond line"' in out, out
 
+out=run(base+"i.configure({status:()=> 'live status',inspector:tab=>['TAB:'+tab,'session cost $0.001']}); const x=await i.next('axon > '); i.close(); console.log('RESULT:'+JSON.stringify(x));", [b'draft', b'\x14', b'4', 'RESIZE', b'\x1b[D', b'q', b'\r'])
+assert 'TAB:tools' in out and 'TAB:memory' in out and 'RESULT:"draft"' in out, out
+
 out=run(base+"const x=await i.ask('Key: ',true); i.close(); console.log('LENGTH:'+x.length);", [b'ultra-secret-123',b'\r'])
 assert 'ultra-secret-123' not in out, out
 assert 'LENGTH:16' in out, out

@@ -1,7 +1,7 @@
 import readline from 'node:readline';
 import { Writable } from 'node:stream';
-import { safeText, terminalCaps, Palette, fitCells, displayWidth, inputViewport } from './render.js';
-import { completions, isCommandLine } from './commands.js';
+import { safeText, terminalCaps, Palette, fitCells, displayWidth, inputViewport, gradient } from './render.js';
+import { completions, pathCompletions, isCommandLine } from './commands.js';
 import { readClipboard, extractImages, imageChip } from './images.js';
 export class Input {
   constructor(onInterrupt) {
@@ -25,8 +25,12 @@ export class Input {
       this.rl.on('close', () => { this.closed = true; if (this.waiter) { this.waiter(null); this.waiter = null; } });
     }
   }
-  configure({ chats, status, palette, attachments, attach } = {}) { this.chats = chats; this.status = status; this.attachments = attachments; this.attach = attach; if (palette) this.palette = palette; }
-  items() { return this.menuEnabled && !this.muted && !this.dismissed ? completions(this.line, this.line.startsWith('/resume ') ? this.chats?.() || [] : []) : []; }
+  configure({ chats, status, palette, attachments, attach, inspector } = {}) { this.inspector = inspector; this.chats = chats; this.status = status; this.attachments = attachments; this.attach = attach; if (palette) this.palette = palette; }
+  openPanel(tab = 'session') {
+    this.panelTab = Math.max(0, ['session', 'usage', 'memory', 'tools'].indexOf(tab)); this.panel = true;
+    if (this.waiter) this.render();
+  }
+  items() { return this.menuEnabled && !this.panel && !this.muted && !this.dismissed ? completions(this.line, this.line.startsWith('/resume ') ? this.chats?.() || [] : []) : []; }
   erase() {
     if (!this.terminal || !this.rows) return;
     process.stderr.write('\r' + (this.rows > 1 ? `\x1b[${this.rows - 1}A` : '') + '\x1b[J'); this.rows = 0;
@@ -36,7 +40,14 @@ export class Input {
     const width = Math.max(1, (process.stderr.columns || 80) - 1);
     const clip = value => fitCells(safeText(value).replace(/\n/g, '↵').replace(/\t/g, '  '), width);
     const lines = [];
-    if (this.menuEnabled && this.status) lines.push(this.palette.paint('primary', clip(this.status())));
+    if (this.menuEnabled && this.status) lines.push(gradient(clip(this.status()), this.palette));
+    if (this.panel && this.menuEnabled && this.inspector) {
+      const tabs = ['session', 'usage', 'memory', 'tools'];
+      lines.push(gradient(clip(tabs.map((name, i) => `${i === this.panelTab ? '›' : ''}${i + 1}[${name}]`).join(' ')), this.palette));
+      const values = this.inspector(tabs[this.panelTab]);
+      for (const row of values.slice(0, Math.max(1, (process.stderr.rows || 24) - 6))) lines.push(this.palette.paint('meta', clip(row)));
+      lines.push(this.palette.paint('primary', clip('←/→ or 1–4 · q/Esc close · Ctrl+T toggle')));
+    }
     const chips = this.menuEnabled ? this.attachments?.() || [] : [];
     const chipLimit = Math.max(1, Math.floor((process.stderr.rows || 24) / 4));
     for (let i = 0; i < Math.min(chips.length, chipLimit); i++) lines.push(this.palette.paint('meta', clip(imageChip(chips[i], i))));
@@ -90,6 +101,16 @@ export class Input {
   }
   key(text, key) {
     if (key.ctrl && key.name === 'c' && !this.pasting) { this.cancel(); this.onInterrupt(); return; }
+    if (this.waiter && this.menuEnabled && !this.pasting && !this.muted) {
+      if (key.ctrl && key.name === 't') { this.panel = !this.panel; this.panelTab ||= 0; this.render(); return; }
+      if (this.panel) {
+        if (['escape', 'q'].includes(key.name) || text === 'q') this.panel = false;
+        else if (/^[1-4]$/.test(text || '')) this.panelTab = Number(text) - 1;
+        else if (['left', 'right'].includes(key.name)) this.panelTab = ((this.panelTab || 0) + (key.name === 'right' ? 1 : 3)) % 4;
+        else if (key.ctrl && key.name === 'd') { this.close(); return; }
+        this.render(); return;
+      }
+    }
     if (key.name === 'escape' && !this.pasting) {
       const now = Date.now();
       if (key.sequence === '\x1b\x1b' || (this.escapeAt && now - this.escapeAt < 500)) { this.escapeAt = 0; this.onInterrupt(); }
@@ -108,7 +129,8 @@ export class Input {
     if (key.ctrl && key.name === 'v') { void this.pasteClipboard(); return; }
     if (key.ctrl && key.name === 'l') { if (this.terminal) { process.stderr.write('\x1b[2J\x1b[H'); this.rows = 0; } this.render(); return; }
     if (key.ctrl && key.name === 'd') { if (!this.line) this.close(); else { this.line = this.line.slice(0, this.cursor) + this.line.slice(this.cursor + ([...this.line.slice(this.cursor)][0]?.length || 0)); this.edit(); } return; }
-    const items = this.items();
+    let items = this.items();
+    if (key.name === 'tab' && !items.length && !this.muted && this.menuEnabled) items = pathCompletions(this.line);
     if (items.length && ['up', 'down'].includes(key.name)) { this.selected = (this.selected + (key.name === 'down' ? 1 : -1) + items.length) % items.length; this.render(); return; }
     if (key.name === 'tab' || (items.length && key.name === 'return')) {
       if (!items.length && key.name === 'tab') { this.dismissed = false; this.render(); return; }

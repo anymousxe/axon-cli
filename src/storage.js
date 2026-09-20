@@ -11,7 +11,7 @@ export class Session {
     this.id = id || `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}-${crypto.randomBytes(3).toString('hex')}`;
     if (!/^[a-zA-Z0-9_-]+$/.test(this.id)) throw new Error('Invalid chat ID. Use an ID from /chats.');
     this.file = path.join(dir, 'chats', this.id + '.jsonl');
-    this.messages = []; this.summary = ''; this.title = 'New chat'; this.cost = 0; this.records = [];
+    this.compactions = 0; this.lastCompactionSavings = 0; this.lockin = false; this.messages = []; this.summary = ''; this.title = 'New chat'; this.cost = 0; this.records = [];
     if (id) {
       if (!fs.existsSync(this.file)) throw new Error(`Chat not found: ${id}`);
       const raw = fs.readFileSync(this.file, 'utf8');
@@ -42,7 +42,8 @@ export class Session {
     if (record.type === 'title' || record.type === 'meta') this.title = record.title;
     if (record.type === 'usage') this.cost += record.cost;
     if (record.type === 'clear') { this.messages = []; this.summary = ''; }
-    if (record.type === 'compact') { this.messages = []; this.summary = record.summary; }
+    if (record.type === 'lockin') this.lockin = record.enabled;
+    if (record.type === 'compact') { this.messages = [...(record.messages || [])]; this.summary = record.summary; this.compactions++; this.lastCompactionSavings = record.saved || 0; }
     if (record.type === 'rewind') this.messages = this.messages.slice(0, record.index);
   }
   append(record) {
@@ -127,10 +128,10 @@ export function contextFor(messages, memory = '', budget = CONTEXT_TOKENS, summa
   }
   return { messages: [system, ...kept], tokens: used, percent: Math.min(100, Math.round(used / budget * 100)), trimmed: messages.length - kept.length };
 }
-export function recordUsage(dir, session, model, usage, messages, responseText) {
+export function recordUsage(dir, session, model, usage, messages, responseText, metadata = {}) {
   const estimated = !usage || !Number.isFinite(usage.prompt_tokens) || !Number.isFinite(usage.completion_tokens);
   const counts = estimated ? { prompt_tokens: messages.reduce((n, m) => n + messageTokens(m), 0), completion_tokens: tokensFor(responseText) } : { prompt_tokens: Math.max(0, usage.prompt_tokens), completion_tokens: Math.max(0, usage.completion_tokens) };
-  const entry = { type: 'usage', model, ...counts, estimated, cost: costFor(model, counts) };
+  const entry = { type: 'usage', ...metadata, model, ...counts, estimated, cost: costFor(model, counts) };
   session?.append(entry);
   // An append-only ledger prevents parallel CLI processes from losing usage updates.
   ensureDir(dir);
