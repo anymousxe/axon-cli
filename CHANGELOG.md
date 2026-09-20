@@ -1,3 +1,15 @@
+## 1.4.0
+- Account login: `axon login` uses the site's device-code flow — it prints the /cli-auth
+  URL plus a short code, polls until approved, and stores the issued key locally
+  (Ctrl-C cancels cleanly). `axon whoami` now resolves the live usage API and shows
+  the masked key, plan, token/image usage and renewal date; without the API it falls
+  back to local credential info. New `axon usage` draws unicode bars for monthly token
+  and image budgets with days until reset.
+- Quota errors: HTTP 402 responses mentioning a usage limit now surface as
+  "Free plan limit reached — upgrade at https://axon-chat-nu.vercel.app/usage"
+  instead of raw JSON; wallet-balance 402s keep the old message.
+- REPL: `/login`, `/logout` and `/usage` mirror the new commands; the local cost
+  ledger moved to `/cost`. 59 tests (was 52).
 ## 1.3.2
 - Checkpoint retries: the 1.3.1 ladder (3 attempts, ~3.5s) was too short to outlast a
   Vercel edge-challenge cooldown, so bursts still surfaced "Access denied". Challenge 403s

@@ -6,14 +6,15 @@ import { Session, lastSession, listSessions, memoryText, remember, forget, recor
 import { UI } from './ui.js';
 import { Input } from './input.js';
 import { completion, endpoint } from './api.js';
+import { startDeviceFlow, pollDevice, fetchUsage, renderUsage, whoamiLine, keyMask } from './auth.js';
 import { loadImage, clipboardImage, extractImages, imageChip } from './images.js';
 import { Permissions } from './tools.js';
 import { Engine } from './engine.js';
 import { SLASH_HELP, isCommandLine } from './commands.js';
 import { copyText } from './clipboard.js';
 
-export const VERSION = '1.3.0';
-const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
+export const VERSION = '1.4.0';
+const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --save            Persist a one-shot run as a saved chat\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
 
@@ -40,7 +41,7 @@ export function parseArgs(argv) {
     else if (flag === '--new') options.new = true;
     else if (flag === '--save') options.save = true;
     else if (flag === '--hide-thinking') options.hideThinking = true;
-    else if (['login', 'logout', 'whoami'].includes(flag) && !options.command) options.command = flag;
+    else if (['login', 'logout', 'whoami', 'usage'].includes(flag) && !options.command) options.command = flag;
     else throw new Error(`Unknown argument: ${flag}. Run axon --help.`);
   }
   if (options.continue && options.resume) throw new Error('Choose either --continue or --resume.');
@@ -82,14 +83,54 @@ export async function main(argv = process.argv.slice(2)) {
       const message = 'Stored key removed.' + (process.env.AXON_API_KEY ? ' AXON_API_KEY is still set; unset it separately.' : '');
       ui.info(message); ui.event('logout', { message }); return;
     }
+    let key = apiKey(dir);
+    const login = async () => {
+      const flow = await startDeviceFlow();
+      ui.info(`Visit ${flow.verification_url} and enter code: ${flow.user_code}`);
+      ui.event('login', { status: 'pending', user_code: flow.user_code, verification_url: flow.verification_url });
+      controller = new AbortController();
+      let granted = null;
+      try {
+        granted = await pollDevice({ device_code: flow.device_code, interval: flow.interval, expires_in: flow.expires_in, signal: controller.signal, onPoll: () => { if (!opts.json) process.stderr.write('.'); } });
+      } catch (error) {
+        if (controller.signal.aborted) { process.stderr.write('\n'); ui.info('Login cancelled.'); return false; }
+        throw error;
+      } finally { controller = null; }
+      if (!granted) throw new Error('The login service returned an unexpected response.');
+      if (!opts.json) process.stderr.write('\n');
+      saveConfig(dir, { ...readConfig(dir), apiKey: granted }); key = granted;
+      if (process.env.AXON_API_KEY) ui.info('Note: AXON_API_KEY overrides the saved key in subsequent runs.');
+      ui.info('Logged in.'); ui.event('login', { status: 'approved' });
+      return true;
+    };
+    if (opts.command === 'login') { await login(); return; }
+    const remoteUsage = async () => {
+      try { return await fetchUsage(key); }
+      catch (error) { if (error.status === 401) return 401; throw error; }
+    };
     if (opts.command === 'whoami') {
+      if (!key) { ui.info('Not logged in. Run: axon login'); ui.event('whoami', { authenticated: false }); return; }
+      const usage = await remoteUsage();
+      if (usage === 401) { ui.info('Not logged in. Run: axon login'); ui.event('whoami', { authenticated: false }); return; }
+      if (usage) {
+        if (opts.json) ui.event('whoami', { authenticated: true, key: keyMask(key), ...usage });
+        else ui.info(whoamiLine(key, usage));
+        return;
+      }
       const source = process.env.AXON_API_KEY ? 'AXON_API_KEY' : config.apiKey ? 'config' : 'none';
-      const info = { authenticated: source !== 'none', source, config_dir: dir, endpoint: endpoint(), note: 'Local credential presence only; not an account identity or live validation.' };
-      if (opts.json) ui.event('whoami', info); else ui.info(`${info.authenticated ? 'Key configured' : 'Not logged in'} (${source})\nConfig: ${dir}\nEndpoint: ${info.endpoint}\n${info.note}`);
+      const info = { authenticated: true, source, config_dir: dir, endpoint: endpoint(), note: 'Usage API not available; showing local credential presence only.' };
+      if (opts.json) ui.event('whoami', info); else ui.info(`Key configured (${source})\nConfig: ${dir}\nEndpoint: ${info.endpoint}\n${info.note}`);
       return;
     }
-    let key = apiKey(dir);
-    if (!key || opts.command === 'login') {
+    if (opts.command === 'usage') {
+      if (!key) throw new Error('Not logged in. Run: axon login');
+      const usage = await remoteUsage();
+      if (usage === 401) throw new Error('Not logged in. Run: axon login');
+      if (!usage) ui.info('Usage API not available yet.');
+      else { ui.info(renderUsage(usage)); ui.event('usage', usage); }
+      return;
+    }
+    if (!key) {
       if (!process.stdin.isTTY) throw new Error('No interactive terminal for login. Set AXON_API_KEY, or run `axon login` in a terminal.');
       if (opts.json) throw new Error('Run `axon login` without --json to enter a key securely.');
       input = new Input(interrupt);
@@ -106,7 +147,6 @@ export async function main(argv = process.argv.slice(2)) {
       controller = null;
       saveConfig(dir, { ...config, apiKey: entered }); key = process.env.AXON_API_KEY || entered;
       ui.info('✓ Key validated and saved.');
-      if (opts.command === 'login') return;
       config = readConfig(dir);
     }
     const settings = settingsFrom(config, opts); validateSettings(settings); ui.setTheme(settings.theme);
@@ -243,11 +283,25 @@ export async function main(argv = process.argv.slice(2)) {
             case '/new': if (engine.lockin.active) engine.setLockIn(false); engine.session = new Session(dir); pending = []; engine.contextPercent = 0; say(`New chat: ${engine.session.id}`); break;
             case '/title': if (!arg) { say(engine.session.title); break; } engine.session.setTitle(arg); say('Title saved.'); break;
             case '/clear': engine.session.clear(); pending = []; engine.contextPercent = 0; say('Context cleared. Transcript and persistent memory retained.'); break;
-            case '/usage':
+            case '/usage': {
+              if (!key) throw new Error('Not logged in. Run /login.');
+              let usage = null;
+              try { usage = await fetchUsage(key); }
+              catch (error) { if (error.status === 401) throw new Error('Not logged in. Run /login.'); usage = null; }
+              if (usage) { say(renderUsage(usage)); ui.event('usage', usage); break; }
+              say('Usage API not available yet. Local session ledger:');
+            }
             case '/cost': {
               const all = usageSummary(dir), current = usageSummary(dir, engine.session.id);
               say(`Session: ${money(current.total)} · All-time: ${money(all.total)}${all.estimated ? ' (includes estimates)' : ''}\n` + Object.entries(all.models).map(([model, row]) => `${model}: session ${money(current.models[model]?.cost || 0)} / all-time ${money(row.cost)} · ${row.prompt_tokens} in / ${row.completion_tokens} out · ${row.requests} requests`).join('\n'));
               ui.event('usage', { session: current, all_time: all }); break;
+            }
+            case '/login': await login(); break;
+            case '/logout': {
+              const current = readConfig(dir);
+              delete current.apiKey; saveConfig(dir, current);
+              say('Stored key removed.' + (process.env.AXON_API_KEY ? ' AXON_API_KEY is still set; unset it separately.' : '') + ' This session keeps using the old key until you exit.');
+              break;
             }
             default: throw new Error(`Unknown command: ${command}. Try /help.`);
           }

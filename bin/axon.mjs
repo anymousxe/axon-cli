@@ -601,7 +601,8 @@ const COMMANDS = [
   ['/panel', 'Tabbed session / usage / memory / tools inspector'], ['/lockin', 'Lock in: max effort, tools, 24 rounds (on|off)'],
   ['/btw', 'Ask Lightning without adding context'], ['/fast', 'Toggle Lightning with thinking off'],
   ['/compact', 'Compact older turns; auto|off toggles automation'], ['/retry', 'Resend the last user turn'],
-  ['/copy', 'Copy the last assistant answer'], ['/usage', 'Detailed per-model token and cost ledger'],
+  ['/copy', 'Copy the last assistant answer'], ['/usage', 'Plan usage bars: tokens, images, renewal'],
+  ['/login', 'Log in with a device code from the web app'], ['/logout', 'Remove the stored API key'],
   ['/status', 'Model, key, context and session details'], ['/theme', 'Choose dark, light or auto palette'],
   ['/model', 'List or switch models'], ['/think', 'Set effort or show/hide reasoning'],
   ['/hide-thinking', 'Toggle reasoning visibility'], ['/img', 'Attach image from file or clipboard'],
@@ -1006,9 +1007,10 @@ const { APIError, endpoint, sseEvents, completion } = (() => {
 
 class APIError extends Error {
   constructor(status, detail) {
+    const quota = status === 402 && /usage limit/i.test(detail || '');
     const messages = {
       401: 'API key rejected. Run `axon login` or check AXON_API_KEY.',
-      402: 'Your Axon wallet is empty. Add funds before trying again.',
+      402: quota ? 'Free plan limit reached — upgrade at https://axon-chat-nu.vercel.app/usage' : 'Your Axon wallet is empty. Add funds before trying again.',
       403: 'The Axon API is rate-limiting rapid requests. Wait a few seconds, then retry.',
       429: 'Rate limit reached. Please try again shortly.',
     };
@@ -1151,6 +1153,82 @@ async function completion({ key, model, effort = 'off', messages, tools, signal,
 }
 
 return { APIError, endpoint, sseEvents, completion };
+})();
+
+// auth.js
+const { siteBase, startDeviceFlow, pollDevice, fetchUsage, formatCount, renderUsage, keyMask, whoamiLine } = (() => {
+
+const DEFAULT_SITE = 'https://axon-chat-nu.vercel.app';
+
+// The chat endpoint lives at {site}/api/v1/chat/completions; account routes at {site}/api/*.
+function siteBase(url = process.env.AXON_BASE_URL || DEFAULT_SITE + '/api') {
+  return String(url).replace(/\/+$/, '').replace(/\/chat\/completions$/, '').replace(/\/v1$/, '');
+}
+
+function absolute(url, base) { return /^https?:\/\//i.test(url) ? url : new URL(url, new URL(base).origin).toString(); }
+
+async function startDeviceFlow(signal) {
+  const response = await fetch(`${siteBase()}/cli/device`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal });
+  if (!response.ok) throw new APIError(response.status, await response.text());
+  const flow = await response.json().catch(() => null);
+  if (!flow?.device_code || !flow?.user_code) throw new Error('The login service returned an unexpected response.');
+  return {
+    device_code: flow.device_code,
+    user_code: flow.user_code,
+    verification_url: absolute(flow.verification_url || '/cli-auth', siteBase()),
+    expires_in: Number(flow.expires_in) > 0 ? Number(flow.expires_in) : 900,
+    interval: Number(flow.interval) > 0 ? Number(flow.interval) : 5,
+  };
+}
+
+async function pollDevice({ device_code, interval = 5, expires_in = 900, onPoll = () => {}, signal }) {
+  const deadline = Date.now() + expires_in * 1000;
+  for (;;) {
+    signal?.throwIfAborted();
+    const response = await fetch(`${siteBase()}/cli/device`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_code }), signal });
+    if (!response.ok) throw new APIError(response.status, await response.text());
+    const state = await response.json().catch(() => null);
+    if (state?.status === 'approved') return state.api_key;
+    if (state?.status === 'expired' || Date.now() + interval * 1000 >= deadline) throw new Error('Login window expired. Run `axon login` again.');
+    if (state?.status !== 'pending') throw new Error('The login service returned an unexpected response.');
+    onPoll(state);
+    await sleep(interval * 1000, undefined, { signal });
+  }
+}
+
+async function fetchUsage(key, signal) {
+  const response = await fetch(`${siteBase()}/usage`, { headers: { Authorization: `Bearer ${key}` }, signal });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new APIError(response.status, await response.text());
+  return response.json();
+}
+
+function formatCount(n) { return Number(n || 0).toLocaleString('en-US'); }
+function limitText(limit) { return Number(limit) > 0 ? formatCount(limit) : 'unlimited'; }
+function bar(used, limit, width = 20) {
+  if (!(Number(limit) > 0)) return `${'█'.repeat(width)}  ${formatCount(used)} / unlimited`;
+  const ratio = Math.min(1, Math.max(0, used / limit));
+  return `${'█'.repeat(Math.round(ratio * width))}${'░'.repeat(width - Math.round(ratio * width))}  ${formatCount(used)} / ${formatCount(limit)} (${Math.round(ratio * 100)}%)`;
+}
+
+function renderUsage(u, now = Date.now()) {
+  const ends = u?.period_ends_at ? new Date(u.period_ends_at) : null;
+  const valid = ends && !Number.isNaN(ends.getTime());
+  const days = valid ? Math.max(0, Math.ceil((ends.getTime() - now) / 86400000)) : null;
+  const head = `${u?.plan ?? 'free'} plan · resets ${valid ? ends.toISOString().slice(0, 10) : 'unknown'}${days !== null ? ` (in ${days} day${days === 1 ? '' : 's'})` : ''}`;
+  return [head, `Tokens  ${bar(u?.tokens_used, u?.tokens_limit)}`, `Images  ${bar(u?.images_used, u?.images_limit)}`].join('\n');
+}
+
+function keyMask(key) {
+  if (!key) return 'none';
+  return key.length >= 14 ? `${key.slice(0, 8)}…${key.slice(-4)}` : `${key.slice(0, 4)}…`;
+}
+
+function whoamiLine(key, u) {
+  return `Logged in as key ${keyMask(key)} · ${u?.plan ?? 'free'} · tokens ${formatCount(u?.tokens_used)}/${limitText(u?.tokens_limit)} · images ${formatCount(u?.images_used)}/${limitText(u?.images_limit)} · renews ${u?.period_ends_at ? new Date(u.period_ends_at).toISOString().slice(0, 10) : 'unknown'}`;
+}
+
+return { siteBase, startDeviceFlow, pollDevice, fetchUsage, formatCount, renderUsage, keyMask, whoamiLine };
 })();
 
 // tools.js
@@ -1535,8 +1613,8 @@ return { copyText };
 const { VERSION, toolsDefault, parseArgs, main } = (() => {
 
 
-const VERSION = '1.3.0';
-const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
+const VERSION = '1.4.0';
+const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --save            Persist a one-shot run as a saved chat\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
 
@@ -1563,7 +1641,7 @@ function parseArgs(argv) {
     else if (flag === '--new') options.new = true;
     else if (flag === '--save') options.save = true;
     else if (flag === '--hide-thinking') options.hideThinking = true;
-    else if (['login', 'logout', 'whoami'].includes(flag) && !options.command) options.command = flag;
+    else if (['login', 'logout', 'whoami', 'usage'].includes(flag) && !options.command) options.command = flag;
     else throw new Error(`Unknown argument: ${flag}. Run axon --help.`);
   }
   if (options.continue && options.resume) throw new Error('Choose either --continue or --resume.');
@@ -1605,14 +1683,54 @@ async function main(argv = process.argv.slice(2)) {
       const message = 'Stored key removed.' + (process.env.AXON_API_KEY ? ' AXON_API_KEY is still set; unset it separately.' : '');
       ui.info(message); ui.event('logout', { message }); return;
     }
+    let key = apiKey(dir);
+    const login = async () => {
+      const flow = await startDeviceFlow();
+      ui.info(`Visit ${flow.verification_url} and enter code: ${flow.user_code}`);
+      ui.event('login', { status: 'pending', user_code: flow.user_code, verification_url: flow.verification_url });
+      controller = new AbortController();
+      let granted = null;
+      try {
+        granted = await pollDevice({ device_code: flow.device_code, interval: flow.interval, expires_in: flow.expires_in, signal: controller.signal, onPoll: () => { if (!opts.json) process.stderr.write('.'); } });
+      } catch (error) {
+        if (controller.signal.aborted) { process.stderr.write('\n'); ui.info('Login cancelled.'); return false; }
+        throw error;
+      } finally { controller = null; }
+      if (!granted) throw new Error('The login service returned an unexpected response.');
+      if (!opts.json) process.stderr.write('\n');
+      saveConfig(dir, { ...readConfig(dir), apiKey: granted }); key = granted;
+      if (process.env.AXON_API_KEY) ui.info('Note: AXON_API_KEY overrides the saved key in subsequent runs.');
+      ui.info('Logged in.'); ui.event('login', { status: 'approved' });
+      return true;
+    };
+    if (opts.command === 'login') { await login(); return; }
+    const remoteUsage = async () => {
+      try { return await fetchUsage(key); }
+      catch (error) { if (error.status === 401) return 401; throw error; }
+    };
     if (opts.command === 'whoami') {
+      if (!key) { ui.info('Not logged in. Run: axon login'); ui.event('whoami', { authenticated: false }); return; }
+      const usage = await remoteUsage();
+      if (usage === 401) { ui.info('Not logged in. Run: axon login'); ui.event('whoami', { authenticated: false }); return; }
+      if (usage) {
+        if (opts.json) ui.event('whoami', { authenticated: true, key: keyMask(key), ...usage });
+        else ui.info(whoamiLine(key, usage));
+        return;
+      }
       const source = process.env.AXON_API_KEY ? 'AXON_API_KEY' : config.apiKey ? 'config' : 'none';
-      const info = { authenticated: source !== 'none', source, config_dir: dir, endpoint: endpoint(), note: 'Local credential presence only; not an account identity or live validation.' };
-      if (opts.json) ui.event('whoami', info); else ui.info(`${info.authenticated ? 'Key configured' : 'Not logged in'} (${source})\nConfig: ${dir}\nEndpoint: ${info.endpoint}\n${info.note}`);
+      const info = { authenticated: true, source, config_dir: dir, endpoint: endpoint(), note: 'Usage API not available; showing local credential presence only.' };
+      if (opts.json) ui.event('whoami', info); else ui.info(`Key configured (${source})\nConfig: ${dir}\nEndpoint: ${info.endpoint}\n${info.note}`);
       return;
     }
-    let key = apiKey(dir);
-    if (!key || opts.command === 'login') {
+    if (opts.command === 'usage') {
+      if (!key) throw new Error('Not logged in. Run: axon login');
+      const usage = await remoteUsage();
+      if (usage === 401) throw new Error('Not logged in. Run: axon login');
+      if (!usage) ui.info('Usage API not available yet.');
+      else { ui.info(renderUsage(usage)); ui.event('usage', usage); }
+      return;
+    }
+    if (!key) {
       if (!process.stdin.isTTY) throw new Error('No interactive terminal for login. Set AXON_API_KEY, or run `axon login` in a terminal.');
       if (opts.json) throw new Error('Run `axon login` without --json to enter a key securely.');
       input = new Input(interrupt);
@@ -1629,7 +1747,6 @@ async function main(argv = process.argv.slice(2)) {
       controller = null;
       saveConfig(dir, { ...config, apiKey: entered }); key = process.env.AXON_API_KEY || entered;
       ui.info('✓ Key validated and saved.');
-      if (opts.command === 'login') return;
       config = readConfig(dir);
     }
     const settings = settingsFrom(config, opts); validateSettings(settings); ui.setTheme(settings.theme);
@@ -1766,11 +1883,25 @@ async function main(argv = process.argv.slice(2)) {
             case '/new': if (engine.lockin.active) engine.setLockIn(false); engine.session = new Session(dir); pending = []; engine.contextPercent = 0; say(`New chat: ${engine.session.id}`); break;
             case '/title': if (!arg) { say(engine.session.title); break; } engine.session.setTitle(arg); say('Title saved.'); break;
             case '/clear': engine.session.clear(); pending = []; engine.contextPercent = 0; say('Context cleared. Transcript and persistent memory retained.'); break;
-            case '/usage':
+            case '/usage': {
+              if (!key) throw new Error('Not logged in. Run /login.');
+              let usage = null;
+              try { usage = await fetchUsage(key); }
+              catch (error) { if (error.status === 401) throw new Error('Not logged in. Run /login.'); usage = null; }
+              if (usage) { say(renderUsage(usage)); ui.event('usage', usage); break; }
+              say('Usage API not available yet. Local session ledger:');
+            }
             case '/cost': {
               const all = usageSummary(dir), current = usageSummary(dir, engine.session.id);
               say(`Session: ${money(current.total)} · All-time: ${money(all.total)}${all.estimated ? ' (includes estimates)' : ''}\n` + Object.entries(all.models).map(([model, row]) => `${model}: session ${money(current.models[model]?.cost || 0)} / all-time ${money(row.cost)} · ${row.prompt_tokens} in / ${row.completion_tokens} out · ${row.requests} requests`).join('\n'));
               ui.event('usage', { session: current, all_time: all }); break;
+            }
+            case '/login': await login(); break;
+            case '/logout': {
+              const current = readConfig(dir);
+              delete current.apiKey; saveConfig(dir, current);
+              say('Stored key removed.' + (process.env.AXON_API_KEY ? ' AXON_API_KEY is still set; unset it separately.' : '') + ' This session keeps using the old key until you exit.');
+              break;
             }
             default: throw new Error(`Unknown command: ${command}. Try /help.`);
           }
