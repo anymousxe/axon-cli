@@ -1,3 +1,6 @@
+## 1.2.1
+- Reasoning hotfix: parse legacy top-level Axon SSE (reasoning/delta/level) and send include_reasoning opt-in with effort
+- Docs: server-side reasoning opt-in patch for site operators (docs/reasoning-optin.patch)
 # Changelog
 
 ## 1.2.0 — 2026-09-19

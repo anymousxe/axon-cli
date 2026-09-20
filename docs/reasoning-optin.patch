@@ -1,0 +1,19 @@
+diff --git a/tmp/route.ts.bak b/dev/fd/63
+index 2b3bae9..0000000 100644
+--- a/tmp/route.ts.bak
++++ b/dev/fd/63
+@@ -165,7 +165,8 @@ export async function POST(req: NextRequest) {
+   const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content;
+   const lastUser = typeof lastUserMessage === "string" ? lastUserMessage : Array.isArray(lastUserMessage) ? lastUserMessage.filter((part: any) => part?.type === "text").map((part: any) => part.text).join(" ") : "";
+   const sensitiveReasoningProbe = /\b(what (?:model|powers|runs)|who (?:made|built|trained)|provider|base model|underlying model|model (?:size|architecture|parameters?)|parameter count|how many (?:billion )?(?:parameters?|params)|how (?:big|large) (?:is|are) (?:the model|you)|system prompt|hidden prompt|real identity|actual model|repeat your instructions)\b/i.test(lastUser);
+-  const wantsReasoning = !is5b && !!reasoningEffort && hasVisibleThinking(modelId) && !sensitiveReasoningProbe;
++  const includeReasoningOptIn = (body as { include_reasoning?: unknown }).include_reasoning === true;
++  const wantsReasoning = !is5b && !!reasoningEffort && (hasVisibleThinking(modelId) || includeReasoningOptIn) && !sensitiveReasoningProbe;
+   // 1.8 flagship: its own lift bank, no weakness machinery, no shared identity
+   // priors (those are keyed to the coding-specialist tiers). 1.7 keeps the
+   // coding-first tier stack — identity priors + shared training + weakness register.
+@@ -483,3 +484,4 @@ function err(message: string, status: number, type: string, extraHeaders: Record
+     headers: { "content-type": "application/json", ...cors(), ...extraHeaders },
+   });
+ }
++
