@@ -1,3 +1,9 @@
+## 1.3.2
+- Checkpoint retries: the 1.3.1 ladder (3 attempts, ~3.5s) was too short to outlast a
+  Vercel edge-challenge cooldown, so bursts still surfaced "Access denied". Challenge 403s
+  now ride a dedicated 6-attempt jittered ladder (up to ~21s) that doesn't consume the
+  general retry budget; the 403 message says "rate-limiting rapid requests" instead.
+
 ## 1.3.1
 - Chats: one-shots no longer create saved chats (--save to keep); REPL auto-continues last chat (--new for fresh); dangling last-chat pointer self-heals
 - Retries: transient Vercel-checkpoint 403s now retry silently instead of printing Access denied

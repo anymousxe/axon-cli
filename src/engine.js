@@ -30,7 +30,7 @@ export class Engine {
     this.ui.startActivity?.(`${this.compacting ? 'compacting… · ' : ''}${this.lockin.active ? '🔒 LOCKED-IN · ' : ''}${this.settings.fast && model === this.settings.model ? '⚡ ' : ''}${model} · think ${effort} · ${money(this.session.cost)} session · ctx ${this.contextPercent}%`);
     let result;
     try {
-      result = await completion({ key: this.key, model, effort, messages, tools, signal, onDelta, onRetry: attempt => this.ui.info(`Connection busy; retrying (${attempt}/3)…`) });
+      result = await completion({ key: this.key, model, effort, messages, tools, signal, onDelta, onRetry: attempt => this.ui.info(`Connection busy; retrying (${attempt})…`) });
     } finally { this.ui.stopActivity?.(); }
     const usage = recordUsage(this.dir, this.session, model, result.usage, messages, result.content + result.reasoning + (result.toolCalls.length ? JSON.stringify(result.toolCalls) : ''), { local_context_tokens: projectedTokens(this.session.messages, this.session.summary), context_request: !this.compacting && this.inTurn && model === this.settings.model });
     (this.turnUsage ||= []).push(usage);

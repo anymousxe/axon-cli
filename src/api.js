@@ -5,7 +5,7 @@ export class APIError extends Error {
     const messages = {
       401: 'API key rejected. Run `axon login` or check AXON_API_KEY.',
       402: 'Your Axon wallet is empty. Add funds before trying again.',
-      403: 'Access denied by the Axon API.',
+      403: 'The Axon API is rate-limiting rapid requests. Wait a few seconds, then retry.',
       429: 'Rate limit reached. Please try again shortly.',
     };
     super(messages[status] || `Axon API returned HTTP ${status}${detail ? ': ' + detail.slice(0, 300) : ''}`);
@@ -56,6 +56,13 @@ export async function completion({ key, model, effort = 'off', messages, tools, 
   if (tools?.length) { body.tools = tools; body.tool_choice = 'auto'; }
   if (maxTokens) body.max_tokens = maxTokens;
   let response;
+  // Vercel-style edge challenge: bursts of rapid non-browser requests get
+  // JS-challenged at the edge (HTML 403) and cool off after a few seconds. A
+  // CLI can't solve the challenge, so wait it out on a longer jittered ladder
+  // instead of surfacing a 403. These waits don't consume the general retry
+  // budget — a transient challenge is not a request failure.
+  let checkpointAttempts = 0;
+  const MAX_CHECKPOINT = 6;
   for (let attempt = 0; ; attempt++) {
     signal?.throwIfAborted();
     try {
@@ -73,6 +80,14 @@ export async function completion({ key, model, effort = 'off', messages, tools, 
     if (response.ok) break;
     const detail = await response.text();
     const checkpoint403 = response.status === 403 && /<html|security checkpoint|challenge/i.test(detail.slice(0, 400));
+    if (checkpoint403 && checkpointAttempts < MAX_CHECKPOINT) {
+      checkpointAttempts++;
+      onRetry(checkpointAttempts);
+      const delay = Math.min(1000 * checkpointAttempts, 6000) + Math.random() * 600;
+      await sleep(delay, undefined, { signal });
+      attempt--;
+      continue;
+    }
     if ((response.status === 429 || response.status >= 500 || checkpoint403) && attempt < retries) {
       const retryHeader = response.headers.get('retry-after');
       const delay = retryHeader && /^\d+(\.\d+)?$/.test(retryHeader) ? Number(retryHeader) * 1000 : 500 * 2 ** attempt;
