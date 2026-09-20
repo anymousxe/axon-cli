@@ -16,6 +16,32 @@ A 24-second copper-core 3D ad, with a responsive interactive web edition and ori
 [Download the 1080p film](https://github.com/anymousxe/axon-cli/releases/tag/axon-flash-ad-v1)
 or [run the interactive edition locally](docs/ad/README.md). The ad is independent of the CLI runtime.
 
+## v1.3 at a glance
+
+| Feature | What you get |
+| --- | --- |
+| Permission-gated shell | Interactive tools on by default; reads/writes/commands still require approval |
+| Rich streamed Markdown | Code, bold, italic, strike, headings, links, lists, quotes, tables and syntax-colored fences |
+| Animated gradients | Truecolor hue drift and 12 fps active-only animation; plain/static fallbacks |
+| Tabbed inspector | Ctrl+T: session / usage / memory / tools, draft-safe keyboard navigation |
+| Completion | Slash commands/args, model names, efforts, image paths and tool-style path tokens |
+| Lock-in | Max effort, tools, up to 24 agent rounds, restored settings on exit |
+| Compaction | Automatic threshold + `/compact`; six recent turns retained; resumable summaries |
+| Everything retained | Thinking, images, chats/resume, memory, cost ledger, themes, dual SSE protocols |
+
+ASCII preview (the live terminal colors the accents and animates while working):
+
+```text
+axon > /lockin on
+Lock-in ON - max effort - tools on - 24 rounds - approvals still required
+[LOCKED-IN] axon-1.8-flash . max . ctx 38% . $0.0042 session
+  >1[session] 2[usage] 3[memory] 4[tools]
+  Refactor the parser
+  Context: ~9120 / 24000 (38%)
+  Lock-in: ON . 24 rounds
+  Left/Right or 1-4 . q/Esc close . Ctrl+T toggle
+```
+
 ## Install
 
 Install [Node.js 18+](https://nodejs.org/) first (a current LTS release is recommended).
@@ -26,12 +52,12 @@ warn about the extra option and can omit it.
 
 **Linux — Bash**
 ```sh
-npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.2.0/anymousxe-axon-cli-1.2.0.tgz
+npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.3.0/anymousxe-axon-cli-1.3.0.tgz
 ```
 
 **Windows — PowerShell**
 ```powershell
-npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.2.0/anymousxe-axon-cli-1.2.0.tgz
+npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.3.0/anymousxe-axon-cli-1.3.0.tgz
 ```
 
 Then run `axon`. First run opens a hidden-key wizard, validates your key with a tiny **billable** request,
@@ -42,7 +68,7 @@ On Linux, use a user-owned Node installation if your global npm prefix is not wr
 <details>
 <summary>Portable single-file installation / running from source</summary>
 
-Download [`axon.mjs`](https://github.com/anymousxe/axon-cli/releases/download/v1.2.0/axon.mjs) and run:
+Download [`axon.mjs`](https://github.com/anymousxe/axon-cli/releases/download/v1.3.0/axon.mjs) and run:
 
 ```sh
 node /path/to/axon.mjs --help
@@ -70,7 +96,8 @@ axon --model axon-1.8-lightning -p "Summarize this idea"
 axon --think high -p "Check this proof carefully"
 axon -p "What is wrong with this UI? ./screenshot.png" # Auto-attach image paths
 axon -i screenshot.png -p "Describe this"              # Explicit flag still works
-axon --tools                          # Offer tools; ask before each action
+axon --no-tools                       # Disable tools (interactive default is on)
+axon --tools -p "Run uname -a"        # One-shot tools; TTY approval still required
 axon -p "Say hello" --json            # Newline-delimited JSON events
 ```
 
@@ -112,7 +139,7 @@ Chat saved: 20260919T215942-39f63f
 - **Paste-anywhere images.** Ctrl+V attaches a clipboard image or inserts text at the cursor.
   Paste or type a local image path to attach it; dim chips show names and dimensions.
 - **Images that reach the right model.** Native Flash input or a Flash description passed to a text-only model.
-- **Tools you control.** Read, write, edit, list, and run commands. Off by default; no silent approvals.
+- **Tools you control.** Read, write, edit, list, and run commands. On in interactive chat; off for one-shot/pipes unless requested. No silent approvals.
 - **Script-friendly.** Answers on stdout, UI on stderr, NDJSON when requested, friendly error exit codes.
 - **Resilient by design.** Ctrl-C cancels without losing the chat; retries for rate limits/server errors;
   raw-key editing with a plain-line fallback, terminal escapes stripped from untrusted output, `NO_COLOR` support.
@@ -123,7 +150,9 @@ Chat saved: 20260919T215942-39f63f
 | --- | --- |
 | `/btw <question>` | Lightning side answer, never added to chat messages or future context; usage is still billed and recorded |
 | `/fast` | Toggle Lightning + thinking off; toggle again to restore previous settings |
-| `/compact` | Summarize active history with Lightning; retain transcript and report estimated tokens saved |
+| `/compact [auto\|off]` | Compact older history with Lightning; keep six recent turns; toggle automatic compaction |
+| `/lockin [on\|off]` | Max effort + tools + 24-round agent loop; off restores prior settings |
+| `/panel [session\|usage\|memory\|tools]` | Tabbed inspector (also Ctrl+T) |
 | `/retry` | Replace the last user turn and its replies with a fresh response; old transcript stays on disk |
 | `/copy` | Copy the last assistant answer via `wl-copy`, `xclip`, `clip.exe`, or `pbcopy` |
 | `/usage` | Detailed per-model input/output tokens, request counts, session and all-time cost |
@@ -155,7 +184,7 @@ request, or twice at an idle prompt exits. Double-Esc also interrupts an active 
 Type `/` or `/prefix` at the prompt to open a fuzzy-filtered menu **above** the input.
 Use ↑/↓ to select, Tab or Enter to complete, then Enter again to execute. Esc dismisses.
 After completing `/model `, press Tab again to open the model argument menu with input/output
-prices. `/think `, `/resume `, `/theme `, `/tools ` and `/images ` also complete arguments.
+prices. `/think `, `/resume `, `/theme `, `/tools `, `/lockin `, `/compact `, `/panel ` and `/images ` also complete arguments. `/img ` completes local paths (including spaces); Tab also completes path tokens in free text and JSON-style tool arguments.
 Command matching starts at the beginning of the prompt; slashes inside ordinary prose do not
 hijack typing. Bracketed paste is inserted as text, including multiline text, never executed
 as a batch of commands. Home/End, arrows, Backspace/Delete and Ctrl-A/E/U/K/W work.
@@ -187,23 +216,61 @@ axon › /m
 ```
 
 Ice-blue accents work on deep-space backgrounds; light mode uses darker, higher-contrast
-accents. JS/TS, Python, JSON, SQL, Bash and sh fenced code gets dependency-free lexical
-highlighting. Write/edit tools show unified diffs after approved changes. Startup fades in
-for 300 ms; waiting shows a spinner with elapsed seconds; reasoning pulses and answers
-complete with a subtle confirmation pulse. The prompt status refreshes after each command
-and turn, and request activity shows the current model/effort/context/cost.
+accents. Streamed answers, `/btw`, and tool summaries render Markdown: inline code with an
+accent background, bright bold, italic, dim strikethrough, underlined gradient headings,
+colored list bullets, quotes, links, aligned tables, and rules. JS/TS, Python, JSON, SQL,
+Bash/sh, Go, Rust, C/C++ and Java fences get dependency-free lexical highlighting.
+Write/edit tools still show unified diffs after approved changes.
+
+Truecolor terminals get hue-drifting startup, activity, streaming caret, lock-in and
+compaction accents at about 12 fps. Lock-in task completion gets a short sparkle burst.
+Animation timers stop when idle; the prompt's gradient stays frozen until the next redraw.
+Oversized in-flight Markdown lines/tables use a clipped preview and print fully on completion.
 
 `NO_COLOR` disables colors **and animation** (but retains keyboard menus on capable TTYs).
 `TERM=dumb` and non-TTY output are plain; redirected answers keep their original Markdown.
-Windows Terminal supports ANSI/truecolor, while legacy Windows consoles use plain-line input.
-JSON mode has no styled answer output or animations. Unicode width can vary by terminal;
-the prompt scrolls horizontally rather than wrapping long input.
+256-color terminals use static colors. Windows Terminal supports ANSI/truecolor, while legacy
+Windows consoles use plain-line input. JSON output has no styled answers or animations.
+Unicode width can vary by terminal; the prompt scrolls horizontally rather than wrapping input.
+Set `COLORTERM=truecolor` only if your terminal supports 24-bit color.
 
-Compaction is billable and lossy: full transcripts remain on disk, but summarized context
-replaces active messages only after a successful, smaller summary. Large histories are
-summarized in bounded chunks. Image bytes are excluded from summaries; discuss important
-visual details before compacting. `/clear` removes the compact summary as well as active
-messages, not persistent memory. Token savings and context percentages are local estimates.
+### Inspector and lock-in
+
+Press **Ctrl+T**, or enter `/panel`, at the chat prompt. **←/→** or **1–4** switches
+session, usage, memory and tools tabs; **q/Esc** closes without losing your draft.
+The panel shows current context, session/all-time cost, compaction count/savings, memory,
+permission grants, and lock-in state. It refreshes when opened or navigated; it does not
+run a background polling timer or intercept permission prompts. `/panel usage` also prints
+plain values in a piped REPL. Existing session titles appear in the session tab.
+
+`/lockin on` sets effort to `max`, enables tools, and continues tool/model rounds until
+a final answer with no tool calls, cancellation, the 24-round cap, or the five-minute turn
+timeout. It **does not bypass permission approval**. `/lockin off` restores the previous
+effort/tools state. Effort, fast mode and tools-off changes are blocked while locked;
+turn it off first. Markers persist in chat JSONL, and interactive resume restores lock-in
+unless `--no-tools` is given. Approval grants themselves never persist.
+
+### Automatic and manual compaction
+
+`/compact` summarizes older turns with `axon-1.8-lightning`, keeping the latest **six user
+turns and all their assistant/tool messages verbatim**. If fewer than seven turns exist,
+it reports that there is nothing old enough to compact. `/compact auto` enables automatic
+compaction (default); `/compact off` disables it for the process. Auto-compaction checks
+projected context before a turn and between completed tool rounds.
+
+The default threshold is **80% of the conservative 24,000-token local input budget**.
+Server model windows are not published here, so this is deliberately not a claim about
+actual maximum model context. Usage-ledger prompt/output tokens plus local growth inform
+the projection; lifetime usage is never mistaken for context usage.
+`AXON_COMPACT_THRESHOLD=0.8` or `80` overrides the threshold (`0.001` is useful for testing).
+
+Compaction is billable and lossy. Full transcripts remain on disk; older active history is
+replaced only after a successful, nonempty, smaller summary. Errors leave it untouched.
+Bounded summarization excludes image bytes; discuss important visual details first.
+Summary, retained messages and savings are persisted atomically as one JSONL compaction
+marker so resume reconstructs the same context. `/clear` removes active summary/messages,
+not persistent memory or transcript records. Savings are estimates. If recent turns alone
+exceed the local budget, compaction cannot shrink them; shorten the prompt or `/clear`.
 
 ## Vision
 
@@ -253,7 +320,9 @@ There is no separate image upload service.
 
 ## Tools and permissions
 
-`axon --tools` or `/tools on` exposes five OpenAI-compatible functions:
+Plain interactive `axon` exposes five OpenAI-compatible functions. `--no-tools` disables them.
+One-shot and piped input keep tools off unless `--tools` is passed; `/tools on` enables them
+in a REPL, but non-TTY approval always fails closed:
 
 | Tool | Behavior |
 | --- | --- |
@@ -267,7 +336,7 @@ Each action asks: **y / n / always-for-session / always-for-cmd** (`a` and `c` a
 “Always for cmd” matches the exact tool and arguments, not a dangerous prefix wildcard. Grants disappear
 when you exit or turn tools off. Non-TTY requests cannot approve tools and are denied automatically.
 There is deliberately no `--yes` switch. Outputs are truncated for display and bounded in model context;
-the loop stops after eight rounds per user turn.
+the loop stops after eight rounds per user turn, or 24 in lock-in mode.
 
 **Live API compatibility:** the current endpoint returns function calls in non-streaming JSON, but drops
 them from SSE. Tool-enabled rounds therefore use JSON requests; ordinary chat and vision remain streamed.
@@ -344,11 +413,12 @@ request failure leaves the REPL open. Tools may return a denied/failed result wi
 ```sh
 npm run check          # Build + unit tests + offline end-to-end smoke checks
 npm run smoke:live     # Opt-in, billable: saved login key or AXON_API_KEY
+npm run smoke:terminal # Opt-in, billable Linux PTY: uname approval + forced compaction
 npm pack               # Build the installable npm tarball
 ```
 
 Verified during release preparation on Linux with Node **18.20.8** and **26.8.2**:
-- **40 unit/protocol/PTY tests:** pricing, storage, paths, SSE fragmentation, permissions, cancellation,
+- **52 unit/protocol/PTY tests:** pricing, storage, paths, SSE fragmentation, permissions, cancellation,
   early EOF, retry behavior, JSON tool parsing, rendering, capabilities, autocomplete, compaction,
   side-question isolation, retry persistence, clipboard fallbacks, image dimensions/path extraction,
   cursor insertion and async-paste ordering, Unicode cell clipping, and actual PTY interaction.
@@ -356,8 +426,9 @@ Verified during release preparation on Linux with Node **18.20.8** and **26.8.2*
   echo execution, memory across processes, continue/resume, and persisted costs.
 - **9 live API smoke checks:** chat, piped/streamed REPL, memory, both image routes, resume, actual echo tool,
   and usage accounting. No credentials are in this repository.
-- **Additional live v1.1 command smoke:** fast mode, side questions, compaction, post-summary context
-  recall, retry, status, and detailed usage.
+- **Live v1.3 PTY checks:** plain `axon` with no `--tools`, `uname -a`, real `y` approval,
+  Linux output/exit 0 and model follow-up; forced auto-compaction at a tiny threshold,
+  post-summary ORCHID recall, savings and last-six-turn JSONL resume verification.
 - **Automated Linux PTY checks:** menu placement, completion, resize, multiline bracketed paste,
   Ctrl+V image/text via a controlled clipboard executable, chips, Ctrl-L, double-Esc,
   hidden input, EOF, and terminal-mode restoration. Prior v1 live checks covered login and tool approvals.
@@ -368,7 +439,7 @@ Verified during release preparation on Linux with Node **18.20.8** and **26.8.2*
   provider responses and fallback paths are covered by controlled tests.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The source is intentionally small: `api`, `storage`, `images`,
-`tools`, `engine`, `input`, `ui`, `render`, `commands`, `clipboard`, `paths`, `models`, and `cli`. A deterministic, dependency-free build script
+`tools`, `engine`, `agent`, `input`, `ui`, `render`, `commands`, `clipboard`, `paths`, `models`, and `cli`. A deterministic, dependency-free build script
 emits the standalone executable.
 
 ## Roadmap

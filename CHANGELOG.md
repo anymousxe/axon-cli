@@ -1,7 +1,32 @@
+# Changelog
+
+## 1.3.0 — 2026-09-20
+
+- Fix the interactive tools-off default: plain TTY `axon` offers shell/file tools, always
+  permission-gated. One-shot/pipes remain off unless `--tools`; `--no-tools` wins.
+- Rich incremental Markdown: accent-backed inline code, bold/italic/strike, gradient
+  underlined headings, lists, quotes, links, aligned tables, rules and fenced syntax.
+  Add Go, Rust, C/C++ and Java lexical highlighting. Pipes keep raw Markdown.
+- Truecolor hue-drift on startup, active status/spinner, streaming caret, lock-in badge
+  and compaction; ~12 fps only while active, static 256-color/plain fallbacks.
+- Ctrl+T and `/panel` inspector: session/usage/memory/tools tabs, arrows or 1–4 navigation,
+  q/Esc dismissal, preserved drafts and narrow-terminal clipping.
+- Complete slash args, model names, efforts, `/img` file paths and freeform/tool JSON paths.
+- `/lockin [on|off]`: max effort, tools, 24 model/tool rounds, prior-state restoration,
+  resumable JSONL markers, no bypass of permission checks. Subtle completion sparkles.
+- Automatic compaction at 80% of the conservative 24k local budget; ledger-informed
+  projections, `AXON_COMPACT_THRESHOLD` override, `/compact auto|off`, manual `/compact`.
+  Lightning summarizes older turns while six recent turns remain verbatim. Nonempty/smaller
+  summary check, failure-safe retention, JSONL resume, inspector counts and token savings.
+- Preserve thinking, both reasoning protocols and include_reasoning, images/clipboard,
+  memory, cost ledger, themes, dropdown, chats/resume and dependency-free Node 18 bundle.
+- Release gates: 52 tests on Node 18/26, 11 fixture checks, 9 live API smoke checks,
+  live PTY plain-axon uname approval, forced compaction + recall + resume validation.
+  Windows terminal capabilities/providers are simulated; native Windows was not run.
+
 ## 1.2.1
 - Reasoning hotfix: parse legacy top-level Axon SSE (reasoning/delta/level) and send include_reasoning opt-in with effort
 - Docs: server-side reasoning opt-in patch for site operators (docs/reasoning-optin.patch)
-# Changelog
 
 ## 1.2.0 — 2026-09-19
 
