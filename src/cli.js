@@ -13,7 +13,7 @@ import { Engine } from './engine.js';
 import { SLASH_HELP, isCommandLine } from './commands.js';
 import { copyText } from './clipboard.js';
 
-export const VERSION = '1.4.1';
+export const VERSION = '1.4.2';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --save            Persist a one-shot run as a saved chat\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;

@@ -1271,20 +1271,46 @@ function runCommand(args, signal) {
   } else { executable = 'bash'; options = ['-lc', args.command]; }
   return new Promise(resolve => {
     const child = spawn(executable, options, { cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
-    let output = '', truncated = false, timedOut = false, settled = false;
-    const stop = () => {
+    let output = '', truncated = false, timedOut = false, settled = false, drain = null;
+    const killTree = () => {
       if (process.platform === 'win32') {
         if (child.pid) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).on('error', () => child.kill());
       } else { try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); } }
     };
-    const timeout = setTimeout(() => { timedOut = true; stop(); }, 30000);
-    const finish = value => { if (settled) return; settled = true; clearTimeout(timeout); signal?.removeEventListener('abort', stop); resolve(value); };
-    signal?.addEventListener('abort', stop, { once: true });
-    if (signal?.aborted) stop();
+    // Drop our end of the pipes once we're done so a grandchild the command
+    // intentionally backgrounded can't hold the CLI's event loop open.
+    const release = () => {
+      for (const stream of [child.stdout, child.stderr]) {
+        try { stream.destroy(); } catch {}
+        try { stream.unref?.(); } catch {}
+      }
+      try { child.unref(); } catch {}
+    };
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      clearTimeout(drain);
+      signal?.removeEventListener('abort', killTree);
+      release();
+      resolve(value);
+    };
+    const timeout = setTimeout(() => { timedOut = true; killTree(); }, 30000);
+    signal?.addEventListener('abort', killTree, { once: true });
+    if (signal?.aborted) killTree();
     const capture = chunk => { if (output.length < 64000) output += chunk.toString().slice(0, 64000 - output.length); else truncated = true; };
     child.stdout.on('data', capture); child.stderr.on('data', capture);
     child.on('error', error => finish(`Could not run command: ${error.message}`));
-    child.on('close', code => finish(`${output}${truncated ? '\n[output truncated]' : ''}\n[exit ${code}${timedOut ? ', 30s timeout' : ''}${signal?.aborted ? ', cancelled' : ''}]`));
+    const result = code => `${output}${truncated ? '\n[output truncated]' : ''}\n[exit ${code}${timedOut ? ', 30s timeout' : ''}${signal?.aborted ? ', cancelled' : ''}]`;
+    // Resolve on exit, NOT close: `close` waits for the stdio streams to end,
+    // and a process the command backgrounded (`cmd &`) keeps the pipe's write
+    // end open after the shell is gone — that stalled every backgrounding
+    // command until the 30s cap, whose group-kill then killed the server the
+    // user had deliberately detached. exit + a short drain keeps the trailing
+    // output without waiting on a stream that may never close. The tree is
+    // killed only on timeout or abort, never on normal completion.
+    child.on('exit', code => { drain = setTimeout(() => finish(result(code)), 120); });
+    child.on('close', code => finish(result(code)));
   });
 }
 async function executeTool(name, args, signal) {
@@ -1613,7 +1639,7 @@ return { copyText };
 const { VERSION, toolsDefault, parseArgs, main } = (() => {
 
 
-const VERSION = '1.4.1';
+const VERSION = '1.4.2';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --save            Persist a one-shot run as a saved chat\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
