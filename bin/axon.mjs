@@ -1613,7 +1613,7 @@ return { copyText };
 const { VERSION, toolsDefault, parseArgs, main } = (() => {
 
 
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-1.8-flash\n      --think <effort>  off (default), low, medium, high, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --save            Persist a one-shot run as a saved chat\n      --json            Newline-delimited JSON events on stdout\n      --repl            Treat piped lines as REPL turns and slash commands\n      --version         Print version\n  -h, --help            Show this help\n\nWithout a prompt: interactive chat on a TTY; one-shot from piped stdin.\nConfig: AXON_API_KEY, AXON_BASE_URL, AXON_CONFIG_DIR, NO_COLOR.\n`;
@@ -1772,16 +1772,19 @@ async function main(argv = process.argv.slice(2)) {
     let pending = opts.images.map(loadImage);
     input?.configure({ inspector, attachments: () => pending, attach: images => pending.push(...images), chats: () => listSessions(dir), status: () => ui.statusText(settings, money(engine.session.cost), engine.contextPercent), palette: ui.palette });
     let savedFast = null;
+    const requireKey = () => {
+      if (!engine.key) throw new Error('Logged out — no API key. Run /login to authenticate.');
+    };
     const operation = async action => {
       controller = new AbortController();
       const timeout = setTimeout(() => controller?.abort(), 300000);
-      try { return await action(controller.signal); }
+      try { requireKey(); return await action(controller.signal); }
       finally { clearTimeout(timeout); controller = null; ui.stopActivity(); }
     };
     const turn = async (text, images) => {
       controller = new AbortController();
       const timeout = setTimeout(() => { ui.info('Request reached the 5-minute safety timeout.'); controller?.abort(); }, 300000);
-      try { await engine.turn(text, images, controller.signal); }
+      try { requireKey(); await engine.turn(text, images, controller.signal); }
       catch (error) {
         if (!controller.signal.aborted) { ui.error(error.message); ui.event('error', { message: error.message, status: error.status }); }
         if (!repl) process.exitCode = controller.signal.aborted ? 130 : 1;
@@ -1851,7 +1854,7 @@ async function main(argv = process.argv.slice(2)) {
             case '/copy': say(`Copied last assistant answer via ${await copyText(engine.lastAnswer)}.`); break;
             case '/status': {
               const context = engine.contextStats; engine.contextPercent = context.percent;
-              const masked = key.length > 8 ? `${key.slice(0, 3)}…${key.slice(-4)}` : '********';
+              const masked = !key ? 'none — logged out' : key.length > 8 ? `${key.slice(0, 3)}…${key.slice(-4)}` : '********';
               say(`Axon ${VERSION}\nModel: ${settings.model}${settings.fast ? ' ⚡' : ''}\nEffort: ${settings.effort}\nKey: ${masked}\nContext: ~${context.tokens} tokens / ${context.percent}% (local 24k budget)\nSession: ${engine.session.id}\nCost: ${money(engine.session.cost)}\nTheme: ${settings.theme}`); break;
             }
             case '/theme':
@@ -1896,11 +1899,14 @@ async function main(argv = process.argv.slice(2)) {
               say(`Session: ${money(current.total)} · All-time: ${money(all.total)}${all.estimated ? ' (includes estimates)' : ''}\n` + Object.entries(all.models).map(([model, row]) => `${model}: session ${money(current.models[model]?.cost || 0)} / all-time ${money(row.cost)} · ${row.prompt_tokens} in / ${row.completion_tokens} out · ${row.requests} requests`).join('\n'));
               ui.event('usage', { session: current, all_time: all }); break;
             }
-            case '/login': await login(); break;
+            case '/login': await login(); engine.key = key; break;
             case '/logout': {
               const current = readConfig(dir);
               delete current.apiKey; saveConfig(dir, current);
-              say('Stored key removed.' + (process.env.AXON_API_KEY ? ' AXON_API_KEY is still set; unset it separately.' : '') + ' This session keeps using the old key until you exit.');
+              // Drop the in-memory key too — a logout that leaves the session
+              // able to keep sending billable requests isn't a logout.
+              key = null; engine.key = null;
+              say('Logged out. Stored key removed and this session can no longer make requests.' + (process.env.AXON_API_KEY ? ' AXON_API_KEY is still set in your environment — new runs would pick it up; unset it to log out completely.' : '') + ' Run /login to continue.');
               break;
             }
             default: throw new Error(`Unknown command: ${command}. Try /help.`);
