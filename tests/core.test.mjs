@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { configDir, privateWrite, readConfig, saveConfig } from '../src/paths.js';
-import { costFor, money, validateSettings, isVisible, setVisible, visibleModels } from '../src/models.js';
+import { costFor, money, validateSettings, isVisible, setVisible, visibleModels, migrateModel } from '../src/models.js';
 import { sseEvents, completion, endpoint, APIError } from '../src/api.js';
 import { Session, contextFor, remember, forget, memoryText, usageSummary, recordUsage, listSessions } from '../src/storage.js';
 import { imagePart } from '../src/images.js';
@@ -175,17 +175,18 @@ test('resume repairs only a truncated final JSONL record before future appends',
   } finally { fs.rmSync(dir, { recursive: true }); }
 });
 
-test('model visibility overrides persist and Regent/Monarch default hidden', () => {
-  assert.deepEqual(visibleModels(undefined, 'pro'), ['axon-2-cobalt', 'axon-2.1-crimson', 'axon-2.1-silver', 'axon-2.1-sovereign']);
+test('model visibility overrides persist and Regent/Monarch are visible by default', () => {
+  assert.deepEqual(visibleModels(undefined, 'pro'), ['axon-2-cobalt', 'axon-2-regent', 'axon-2-monarch']);
   assert.deepEqual(visibleModels(undefined, 'free'), ['axon-2-cobalt']);
   assert.throws(() => setVisible(undefined, 'axon-2-cobalt', false), /cannot be hidden/);
   const dir = temp();
-  saveConfig(dir, { modelVisibility: setVisible(setVisible(undefined, 'axon-2-regent', true), 'axon-2.1-silver', false) });
+  saveConfig(dir, { modelVisibility: setVisible(setVisible(undefined, 'axon-2-monarch', false), 'axon-2-regent', true) });
   const saved = readConfig(dir).modelVisibility;
-  assert.ok(isVisible('axon-2-regent', saved)); assert.ok(!isVisible('axon-2.1-silver', saved)); assert.ok(!isVisible('axon-2-monarch', saved));
+  assert.ok(isVisible('axon-2-regent', saved)); assert.ok(!isVisible('axon-2-monarch', saved));
 });
 
 test('saved config naming a removed model migrates silently to the flagship', () => {
+  assert.equal(migrateModel('axon-2.1-silver'), 'axon-2-cobalt');
   const dir = temp();
   saveConfig(dir, { model: 'axon-1.6-pro', effort: 'high', apiKey: 'k' });
   assert.deepEqual(readConfig(dir), { model: 'axon-2-cobalt', effort: 'high', apiKey: 'k' });

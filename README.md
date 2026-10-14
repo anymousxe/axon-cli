@@ -186,7 +186,7 @@ Chat saved: 20260919T215942-39f63f
 | `/status` | Version, model, effort, masked key, context estimate, session ID, theme and cost |
 | `/theme dark\|light\|auto` | Persist the terminal palette; auto uses `COLORFGBG` when available, otherwise dark |
 | `/hide-thinking` | Toggle reasoning display without changing effort or billing |
-| `/model [id]` | List visible models (Flagship / Axon 2.1 / Axon 2) or switch; free plan shows only Axon 2 Cobalt |
+| `/model [id]` | List visible models (Flagship / Axon 2) or switch; free plan shows only Axon 2 Cobalt |
 | `/models [hide\|show <id>]` | List every model with its visibility; hide or show one (saved in config) |
 | `/think off\|xlite\|low\|medium\|high\|xhigh\|max` | Select reasoning effort; `off` omits it from requests, `xlite` (alias `standard`) is the cheapest. On the free plan: Extended thinking = standard / low / medium / high |
 | `/think show\|hide` | Show/hide reasoning text |
@@ -378,16 +378,13 @@ allowing broad access. Never approve a command just because the model says it is
 ## Models and cost
 
 Prices in USD per **1 million** tokens. Axon 2 Cobalt (default) is on every plan; the rest need a
-paid plan. Regent and Monarch are hidden by default; run `/models show axon-2-regent` to list them.
+paid plan. Any model except Cobalt can be hidden with `/models hide <id>` and shown again with `/models show <id>`.
 
 | Model | Input | Output |
 | --- | ---: | ---: |
 | **`axon-2-cobalt`** Axon 2 Cobalt (flagship, default) | **$0.40** | **$1.20** |
-| `axon-2.1-crimson` Axon 2.1 Crimson | $1.40 | $3.60 |
-| `axon-2.1-silver` Axon 2.1 Silver | $2.80 | $7.00 |
-| `axon-2.1-sovereign` Axon 2.1 Sovereign | $4.50 | $11.00 |
-| `axon-2-regent` Axon 2 Regent (hidden by default) | $0.80 | $2.40 |
-| `axon-2-monarch` Axon 2 Monarch (hidden by default) | $2.00 | $4.00 |
+| `axon-2-regent` Axon 2 Regent | $0.80 | $2.40 |
+| `axon-2-monarch` Axon 2 Monarch | $2.00 | $4.00 |
 
 `xlite` thinking costs 0.4x the listed rate; Fast mode costs 3x. Saved selections of any model no longer
 offered migrate silently to Axon 2 Cobalt.

@@ -1,14 +1,11 @@
 export const DEFAULT_MODEL = 'axon-2-cobalt';
-// category: flagship | 2.1 | 2. hidden = default visibility (users override via /models).
+// category: flagship | 2. Users may hide any model except the flagship via /models.
 export const MODELS = {
   'axon-2-cobalt': { name: 'Axon 2 Cobalt', input: 0.40, output: 1.20, vision: true, context: 2_000_000, category: 'flagship' },
-  'axon-2.1-crimson': { name: 'Axon 2.1 Crimson', input: 1.40, output: 3.60, vision: true, context: 2_000_000, category: '2.1' },
-  'axon-2.1-silver': { name: 'Axon 2.1 Silver', input: 2.80, output: 7.00, vision: true, context: 2_000_000, category: '2.1' },
-  'axon-2.1-sovereign': { name: 'Axon 2.1 Sovereign', input: 4.50, output: 11.00, vision: true, context: 2_000_000, category: '2.1' },
-  'axon-2-regent': { name: 'Axon 2 Regent', input: 0.80, output: 2.40, vision: true, context: 2_000_000, category: '2', hidden: true },
-  'axon-2-monarch': { name: 'Axon 2 Monarch', input: 2.00, output: 4.00, vision: true, context: 2_000_000, category: '2', hidden: true },
+  'axon-2-regent': { name: 'Axon 2 Regent', input: 0.80, output: 2.40, vision: true, context: 2_000_000, category: '2' },
+  'axon-2-monarch': { name: 'Axon 2 Monarch', input: 2.00, output: 4.00, vision: true, context: 2_000_000, category: '2' },
 };
-export const CATEGORIES = [['flagship', 'Flagship'], ['2.1', 'Axon 2.1'], ['2', 'Axon 2']];
+export const CATEGORIES = [['flagship', 'Flagship'], ['2', 'Axon 2']];
 // 'off' sends no reasoning_effort at all; the rest are sent to the API as-is.
 export const EFFORTS = ['off', 'xlite', 'low', 'medium', 'high', 'xhigh', 'max'];
 // The free plan's "Extended thinking" control: Standard (xlite) plus a small monthly budget of the rest.
@@ -32,7 +29,7 @@ export function costFor(model, usage, { effort, fast } = {}) {
 }
 export function money(value) { return `$${value.toFixed(value < 0.01 ? 4 : 2)}`; }
 export function tokensFor(value) { return Math.ceil((typeof value === 'string' ? value : JSON.stringify(value)).length / 4); }
-// Saved selections that no longer name a public model fall back to the flagship.
+// Saved selections that no longer name a public model (including withdrawn ones) fall back to the flagship.
 export function migrateModel(model) { return MODELS[model] ? model : DEFAULT_MODEL; }
 export function effortLabel(effort) { return effort === 'xlite' ? 'standard' : effort; }
 export function parseEffort(value, plan) {
@@ -41,15 +38,15 @@ export function parseEffort(value, plan) {
   if (isFree(plan) && effort !== 'off' && !FREE_EFFORTS.includes(effort)) throw new Error('Free plan thinking options: standard, low, medium, high.');
   return effort;
 }
-// Visibility overrides: { hidden: [ids], shown: [ids] }. Unlisted models use their default.
+// Visibility overrides: { hidden: [ids], shown: [ids] }. Unlisted models are visible.
 export function visibilityOf(overrides) {
   return { hidden: Array.isArray(overrides?.hidden) ? overrides.hidden : [], shown: Array.isArray(overrides?.shown) ? overrides.shown : [] };
 }
 export function isVisible(id, overrides) {
-  const { hidden, shown } = visibilityOf(overrides);
+  const { hidden } = visibilityOf(overrides);
   if (id === DEFAULT_MODEL) return true;
   if (hidden.includes(id)) return false;
-  return shown.includes(id) || !MODELS[id]?.hidden;
+  return true;
 }
 export function setVisible(overrides, id, visible) {
   if (!MODELS[id]) throw new Error(`Unknown model: ${id}. Models: ${Object.keys(MODELS).join(', ')}`);

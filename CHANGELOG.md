@@ -1,3 +1,8 @@
+## 1.6.1
+
+- Axon 2.1 models withdrawn (Crimson, Silver and Sovereign removed); Regent and Monarch are visible again.
+- `/model` groups are Flagship / Axon 2. Saved settings that name a removed model switch silently to Axon 2 Cobalt.
+
 ## 1.6.0
 
 - New model lineup: Axon 2 Cobalt (flagship, every plan), Axon 2.1 Crimson, Silver and

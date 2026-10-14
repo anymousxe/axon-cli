@@ -62,7 +62,7 @@ test('command menu fuzzy filtering and argument menus carry descriptions/prices'
   assert.equal(completions('/mdl')[0].label, '/model');
   assert.equal(completions('//model').length, 0);
   assert.equal(completions('ordinary text').length, 0);
-  const models = completions('/model '); assert.equal(models.length, MODELS_COUNT - 2); /* Regent and Monarch default hidden */ assert.match(models[0].description, /per 1M/);
+  const models = completions('/model '); assert.equal(models.length, MODELS_COUNT); assert.match(models[0].description, /per 1M/);
   assert.equal(completions('/think h')[0].value, '/think high');
   assert.equal(completions('/theme l')[0].value, '/theme light');
   assert.equal(completions('/resume abc', [{ id: 'abc123', title: 'Chat' }])[0].description, 'Chat');
