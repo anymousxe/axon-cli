@@ -107,7 +107,7 @@ test('quota 402s map to a clean upgrade message; other 402s keep the wallet text
   assert.match(new APIError(401).message, /login/);
   let calls = 0;
   await withServer((req, res) => { calls++; json(res, 402, { error: 'free plan usage limit reached for this month' }); }, async () => {
-    await assert.rejects(completion({ key: 'k', model: 'axon-1.8-flash', messages: [{ role: 'user', content: 'hi' }], retries: 0 }), error => {
+    await assert.rejects(completion({ key: 'k', model: 'axon-2-cobalt', messages: [{ role: 'user', content: 'hi' }], retries: 0 }), error => {
       assert.match(error.message, /Free plan limit reached/);
       assert.match(error.message, /upgrade at https:\/\/axon-chat-nu\.vercel\.app\/usage/);
       assert.doesNotMatch(error.message, /\{"/);

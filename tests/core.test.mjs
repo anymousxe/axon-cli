@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { configDir, privateWrite, readConfig, saveConfig } from '../src/paths.js';
-import { costFor, money, validateSettings } from '../src/models.js';
+import { costFor, money, validateSettings, isVisible, setVisible, visibleModels } from '../src/models.js';
 import { sseEvents, completion, endpoint, APIError } from '../src/api.js';
 import { Session, contextFor, remember, forget, memoryText, usageSummary, recordUsage, listSessions } from '../src/storage.js';
 import { imagePart } from '../src/images.js';
@@ -17,9 +17,9 @@ const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'axon-unit-'));
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5E0AAAAASUVORK5CYII=', 'base64');
 
 test('model pricing, exact usage arithmetic, formatting and settings', () => {
-  assert.equal(costFor('axon-1.8-flash', { prompt_tokens: 1e6, completion_tokens: 1e6 }), 0.4);
-  assert.equal(costFor('axon-1.8-lightning', { prompt_tokens: 1000, completion_tokens: 500 }), 0.00007);
-  assert.equal(costFor('axon-1.6-pro', { prompt_tokens: 1e6, completion_tokens: 2e6 }), 0.95);
+  assert.equal(costFor('axon-2-cobalt', { prompt_tokens: 1e6, completion_tokens: 1e6 }), 1.6);
+  assert.equal(costFor('axon-2-cobalt', { prompt_tokens: 1000, completion_tokens: 500 }), 0.001);
+  assert.equal(costFor('axon-2-regent', { prompt_tokens: 1e6, completion_tokens: 2e6 }), 5.6);
   assert.equal(money(0.0042), '$0.0042'); assert.equal(money(1.235), '$1.24');
   assert.throws(() => validateSettings({ model: 'unknown', effort: 'off' }), /Model/);
 });
@@ -34,6 +34,19 @@ test('portable paths, private config, no environment mutation', () => {
   if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, 'config.json')).mode & 0o777, 0o600);
   fs.rmSync(dir, { recursive: true });
 });
+test('retired Axon 2 selections migrate only the model field to Axon 2 Cobalt', () => {
+  for (const retiredModel of ['axon-2-pro', 'axon-2-flash']) {
+    const dir = temp();
+    try {
+      const original = { apiKey: 'retained-key', model: retiredModel, effort: 'max', showThinking: true, theme: 'light', extra: { marker: 17 } };
+      saveConfig(dir, original);
+      const migrated = readConfig(dir);
+      assert.deepEqual(migrated, { ...original, model: 'axon-2-cobalt' });
+      assert.deepEqual(readConfig(dir), migrated);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
 
 test('SSE handles CRLF, multiline data, comments, fragmented Unicode, EOF', async () => {
   const data = Buffer.from(':keepalive\r\ndata: {"text":\r\ndata: "héllo 🌙"}\r\n\r\ndata: [DONE]');
@@ -53,11 +66,11 @@ test('endpoint normalization and friendly errors', () => {
 test('sessions persist, resume, clear context, retain usage and validate IDs', () => {
   const dir = temp(), session = new Session(dir);
   session.setTitle('A useful chat'); session.add({ role: 'user', content: 'Hello' });
-  recordUsage(dir, session, 'axon-1.8-flash', { prompt_tokens: 100, completion_tokens: 20 }, [], '');
+  recordUsage(dir, session, 'axon-2-cobalt', { prompt_tokens: 100, completion_tokens: 20 }, [], '');
   assert.equal(new Session(dir, session.id).messages[0].content, 'Hello');
   assert.equal(listSessions(dir)[0].title, 'A useful chat');
-  assert.equal(usageSummary(dir).models['axon-1.8-flash'].requests, 1);
-  assert.equal(usageSummary(dir).total, 0.000016);
+  assert.equal(usageSummary(dir).models['axon-2-cobalt'].requests, 1);
+  assert.equal(usageSummary(dir).total, 0.000064);
   session.clear(); assert.equal(new Session(dir, session.id).messages.length, 0);
   assert.throws(() => new Session(dir, '../bad'), /Invalid/);
   assert.throws(() => new Session(dir, 'missing'), /not found/);
@@ -129,7 +142,7 @@ test('API streams answers/reasoning/tools, usage, retries and error handling', a
   const fixture = await startFixture(), previous = process.env.AXON_BASE_URL;
   process.env.AXON_BASE_URL = fixture.url;
   try {
-    const deltas = [], base = { key: 'fixture-key', model: 'axon-1.8-flash', messages: [{ role: 'user', content: 'hello' }] };
+    const deltas = [], base = { key: 'fixture-key', model: 'axon-2-cobalt', messages: [{ role: 'user', content: 'hello' }] };
     const result = await completion({ ...base, onDelta: (type, text) => deltas.push({ type, text }) });
     assert.match(result.content, /Axon ready/); assert.equal(result.usage.prompt_tokens, 100); assert.ok(deltas.length > 1);
     assert.equal(fixture.requests[0].reasoning_effort, undefined);
@@ -160,4 +173,20 @@ test('resume repairs only a truncated final JSONL record before future appends',
     assert.throws(() => parseArgs(['--json=false']), /does not take a value/);
     assert.throws(() => parseArgs(['-p', '-c']), /requires/);
   } finally { fs.rmSync(dir, { recursive: true }); }
+});
+
+test('model visibility overrides persist and Regent/Monarch default hidden', () => {
+  assert.deepEqual(visibleModels(undefined, 'pro'), ['axon-2-cobalt', 'axon-2.1-crimson', 'axon-2.1-silver', 'axon-2.1-sovereign']);
+  assert.deepEqual(visibleModels(undefined, 'free'), ['axon-2-cobalt']);
+  assert.throws(() => setVisible(undefined, 'axon-2-cobalt', false), /cannot be hidden/);
+  const dir = temp();
+  saveConfig(dir, { modelVisibility: setVisible(setVisible(undefined, 'axon-2-regent', true), 'axon-2.1-silver', false) });
+  const saved = readConfig(dir).modelVisibility;
+  assert.ok(isVisible('axon-2-regent', saved)); assert.ok(!isVisible('axon-2.1-silver', saved)); assert.ok(!isVisible('axon-2-monarch', saved));
+});
+
+test('saved config naming a removed model migrates silently to the flagship', () => {
+  const dir = temp();
+  saveConfig(dir, { model: 'axon-1.6-pro', effort: 'high', apiKey: 'k' });
+  assert.deepEqual(readConfig(dir), { model: 'axon-2-cobalt', effort: 'high', apiKey: 'k' });
 });

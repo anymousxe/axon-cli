@@ -147,7 +147,7 @@ test('bundle attaches -p paths, piped paths, REPL mixed text, lists and clears i
     assert.match(events.find(e => e.command === '/imgs').text, /1x1/);
     assert.ok(events.some(e => e.command === '/imgs' && e.text === 'No pending images.'));
     assert.ok(!events.some(e => e.type === 'image_route'));
-    const lightning = await run(['--model', 'axon-1.8-lightning', '-p', file]);
-    assert.ok(lightning.some(e => e.type === 'image_route' && e.route === 'describe'));
+    const flashRun = await run(['--model', 'axon-2-cobalt', '-p', file]);
+    assert.ok(flashRun.some(e => e.type === 'image_route' && e.route === 'native'));
   } finally { await fixture.close(); fs.rmSync(dir, { recursive: true }); }
 });

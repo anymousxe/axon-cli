@@ -1,3 +1,48 @@
+## 1.6.0
+
+- New model lineup: Axon 2 Cobalt (flagship, every plan), Axon 2.1 Crimson, Silver and
+  Sovereign (paid plans), plus Axon 2 Regent and Monarch (paid plans, hidden by default).
+- `/model` lists only the models you can use, grouped Flagship / Axon 2.1 / Axon 2. New
+  `/models` lists everything with its visibility; `/models hide <id>` and `/models show <id>`
+  save your choice. Cobalt cannot be hidden.
+- Free plan: fixed to Axon 2 Cobalt with a 512K context. `/think` becomes Extended thinking
+  (Standard / Low / Medium / High); extended levels use a small monthly budget and fall back
+  to Standard when it is used up. Fast mode is paid-only and now multiplies cost by 3.
+- New thinking levels `xlite` (alias `standard`) and `xhigh`.
+- Saved settings that name a model no longer offered switch silently to Axon 2 Cobalt.
+- Removed Flint and the models that are only available through the API from the CLI.
+
+## 1.5.5
+
+- Restore the Axon 2 flagship name Axon 2 Cobalt (`axon-2-cobalt`) and make it the default.
+- Migrate only saved selections from previous Axon 2 IDs; preserve API keys, all
+  other preferences, sessions, and history.
+- Retain native image input, permission-gated screenshots, 2M context, pricing,
+  and the standalone auto-updater.
+## 1.5.3
+- Switch the Axon 2 model to Axon 2 Cobalt (`axon-2-cobalt`), preserving native
+  images, permission-gated screenshots, the 2M local context budget, and pricing.
+- Migrate only the saved model selection; keep API keys, other settings, sessions,
+  memory, and usage history intact. No legacy model alias is sent to the API.
+- Preserve the existing standalone updater and publish a versioned launcher.
+
+## 1.5.2
+- Read the launcher's actual version declaration, not version-check text inside
+  the bundled updater, so newer releases are installed instead of skipped.
+- Recover interrupted update locks without replacing a running updater's lock.
+
+## 1.5.1
+- Standalone CLI updates from the official HTTPS release manifest, with verified
+  hashes, bounded downloads, syntax checks, and atomic replacement. Updates apply
+  on the next invocation; interactive checks run at most daily without delaying chat.
+- Added `axon update`, `--no-auto-update`, `AXON_NO_AUTO_UPDATE=1`, and the
+  `autoUpdate: false` config setting. Offline checks remain silent.
+
+## 1.5.0
+- Axon 2 support: native image input, model-specific local context budget,
+  and permission-gated screen capture alongside the existing shell/file tools.
+- Rebuilt the standalone launcher so installed CLI behavior matches the source.
+
 ## 1.4.0
 - Account login: `axon login` uses the site's device-code flow — it prints the /cli-auth
   URL plus a short code, polls until approved, and stores the issued key locally

@@ -49,13 +49,13 @@ try {
   ok('memory persistence across two processes');
   const image = path.join(dir, 'pixel.png');
   fs.writeFileSync(image, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5E0AAAAASUVORK5CYII=', 'base64'));
-  for (const [model, route] of [['axon-1.8-flash', 'native'], ['axon-1.8-lightning', 'describe']]) {
+  for (const [model, route] of [['axon-2-cobalt', 'native']]) {
     const vision = await run(['--model', model, '-p', `Describe what you see briefly. "${image}"`, '--json']);
     assert.equal(vision.code, 0, vision.err);
     assert.ok(events(vision).some(e => e.type === 'image_route' && e.route === route));
     assert.ok(events(vision).find(e => e.type === 'result')?.text); ok(`image routing: ${model} → ${route}`);
   }
-  const first = await run(['-p', 'Remember the word ORCHID for this conversation.', '--json']);
+  const first = await run(['-p', 'Remember the word ORCHID for this conversation.', '--save', '--json']);
   assert.equal(first.code, 0, first.err);
   const id = events(first).find(e => e.type === 'result').session_id;
   for (const flags of [['-c'], ['-r', id]]) {
@@ -69,20 +69,20 @@ try {
   if (fixture) process.env.AXON_BASE_URL = fixture.url;
   let toolSeen = false;
   const ui = { begin() {}, finish() {}, info() {}, event() {}, answer() {}, reasoning() {}, tool(name, args, output) { if (name === 'run_command' && output.includes('AXON_TOOL_OK') && output.includes('exit 0')) toolSeen = true; } };
-  const engine = new Engine({ dir, key: env.AXON_API_KEY, session: new Session(dir), settings: { model: 'axon-1.8-flash', effort: 'off', showThinking: false }, ui, permissions: new Permissions(async () => 'y', ui, true) });
+  const engine = new Engine({ dir, key: env.AXON_API_KEY, session: new Session(dir), settings: { model: 'axon-2-cobalt', effort: 'off', showThinking: false }, ui, permissions: new Permissions(async () => 'y', ui, true) });
   await engine.turn(live ? 'Use the run_command tool to execute exactly: echo AXON_TOOL_OK. Then report the output. Do not just describe running it.' : 'FIXTURE_TOOL');
   assert.ok(toolSeen, 'Model did not execute the echo tool');
   if (oldBase === undefined) delete process.env.AXON_BASE_URL; else process.env.AXON_BASE_URL = oldBase;
   ok('function-calling loop → approved real echo command → model follow-up');
-  assert.equal(costFor('axon-1.8-flash', { prompt_tokens: 1e6, completion_tokens: 1e6 }), 0.4);
+  assert.equal(costFor('axon-2-cobalt', { prompt_tokens: 1e6, completion_tokens: 1e6 }), 1.6);
   const usage = JSON.parse(fs.readFileSync(path.join(dir, 'usage.json'), 'utf8'));
-  assert.ok(usage.total > 0); assert.ok(usage.models['axon-1.8-flash']); ok('cost arithmetic + persisted model breakdown');
+  assert.ok(usage.total > 0); assert.ok(usage.models['axon-2-cobalt']); ok('cost arithmetic + persisted model breakdown');
   if (fixture) {
     const denied = await run(['--tools', '-p', 'FIXTURE_TOOL', '--json']);
     assert.equal(denied.code, 0, denied.err); assert.ok(events(denied).some(e => e.type === 'tool' && e.result.includes('Permission denied')));
     ok('non-TTY tool approval fails closed');
-    assert.ok(fixture.requests.some(r => r.model === 'axon-1.8-lightning' && JSON.stringify(r.messages).includes('image_description')));
-    assert.ok(fixture.requests.every(r => r.model === 'axon-1.8-flash' || !r.messages.some(m => Array.isArray(m.content))));
+    assert.ok(fixture.requests.some(r => r.model === 'axon-2-cobalt' && JSON.stringify(r.messages).includes('image_description')));
+    assert.ok(fixture.requests.every(r => r.model === 'axon-2-cobalt' || !r.messages.some(m => Array.isArray(m.content))));
     ok('wire payloads confirm native and describe routing');
   }
   console.log(`\n${passed} smoke checks passed (${live ? 'LIVE API' : 'local HTTP/SSE fixture; not live API verification'}).`);

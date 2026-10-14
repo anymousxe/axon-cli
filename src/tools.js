@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { imagePart } from './images.js';
 import { unifiedDiff } from './render.js';
 
 const schema = (name, description, properties, required) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required, additionalProperties: false } } });
@@ -10,6 +13,7 @@ export const TOOL_DEFINITIONS = [
   schema('write_file', 'Write or overwrite a UTF-8 file. Requires user permission.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content']),
   schema('edit_file', 'Replace one exact occurrence in a UTF-8 file. Requires permission.', { path: { type: 'string' }, old_text: { type: 'string' }, new_text: { type: 'string' } }, ['path', 'old_text', 'new_text']),
   schema('list_dir', 'List a directory. Requires user permission.', { path: { type: 'string' } }, ['path']),
+  schema('take_screenshot', 'Capture the user\'s screen and look at it. Requires user permission. The screenshot is returned to you as an image.', {}, []),
 ];
 function signature(name, args) { return JSON.stringify([name, ...Object.keys(args).sort().map(key => [key, args[key]])]); }
 export class Permissions {
@@ -28,6 +32,36 @@ export class Permissions {
     if (['c', 'always-for-cmd'].includes(answer)) { this.allowed.add(signature(name, args)); return true; }
     return ['y', 'yes'].includes(answer);
   }
+}
+const SCREENSHOT_CMDS = {
+  darwin: [['screencapture', ['-x', '-t', 'png']]],
+  linux: [['grim', []], ['scrot', ['-o']], ['gnome-screenshot', ['-f']], ['spectacle', ['-b', '-n', '-o']], ['import', ['-window', 'root']]],
+  win32: [['powershell', ['-NoProfile', '-Command', "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.X,$b.Y,0,0,$bmp.Size); $bmp.Save('%OUT%'); $g.Dispose(); $bmp.Dispose()"]]],
+};
+async function takeScreenshot(signal) {
+  const tmp = path.join(os.tmpdir(), `axon-shot-${Date.now()}.png`);
+  const candidates = SCREENSHOT_CMDS[process.platform] ?? [];
+  if (!candidates.length) throw new Error(`Screen capture is not supported on ${process.platform}.`);
+  let captured = false, lastError = '';
+  for (const [cmd, args] of candidates) {
+    signal?.throwIfAborted();
+    const argv = args.map(a => a === '%OUT%' ? tmp : a);
+    // grim/import/scrot accept the output path as the last argument.
+    if (['grim', 'scrot', 'gnome-screenshot', 'spectacle'].includes(cmd) && !argv.includes(tmp)) argv.push(cmd === 'gnome-screenshot' || cmd === 'spectacle' ? tmp : tmp);
+    if (cmd === 'import') argv.push(tmp);
+    try {
+      await new Promise((resolve, reject) => {
+        const child = execFile(cmd, argv, { timeout: 15000 }, err => err ? reject(err) : resolve());
+        if (signal) { const onAbort = () => child.kill('SIGKILL'); signal.addEventListener('abort', onAbort, { once: true }); }
+      });
+      if (fs.existsSync(tmp) && fs.statSync(tmp).size > 0) { captured = true; break; }
+    } catch (error) { lastError = error.message; }
+  }
+  if (!captured) throw new Error(`No screen-capture tool available (tried ${candidates.map(c => c[0]).join(', ')}). ${lastError}`.trim());
+  try {
+    const image = imagePart(fs.readFileSync(tmp), 'screenshot.png');
+    return { text: `Screenshot captured (${image.width ?? '?'}x${image.height ?? '?'}).`, image };
+  } finally { fs.rmSync(tmp, { force: true }); }
 }
 function runCommand(args, signal) {
   if (typeof args.command !== 'string' || !args.command.trim()) throw new Error('command must be a nonempty string');
@@ -83,6 +117,10 @@ function runCommand(args, signal) {
 export async function executeTool(name, args, signal) {
   signal?.throwIfAborted();
   if (name === 'run_command') return runCommand(args, signal);
+  if (name === 'take_screenshot') {
+    const shot = await takeScreenshot(signal);
+    return shot;
+  }
   if (typeof args.path !== 'string') throw new Error('path must be a string');
   const file = path.resolve(args.path);
   if (name === 'read_file') {
@@ -107,7 +145,7 @@ export async function executeTool(name, args, signal) {
   throw new Error(`Unknown tool: ${name}`);
 }
 export async function handleTool(call, permissions, ui, signal) {
-  let args = {}, result;
+  let args = {}, result, image = null;
   try {
     args = JSON.parse(call.function.arguments || '{}');
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid tool arguments');
@@ -120,6 +158,9 @@ export async function handleTool(call, permissions, ui, signal) {
         else before = fs.readFileSync(args.path, 'utf8');
       }
       result = await executeTool(call.function.name, args, signal);
+      // take_screenshot returns { text, image }: the image rides along as a
+      // sidecar for the engine to attach as a vision user message.
+      if (result && typeof result === 'object' && result.image) { image = result.image; result = result.text; }
       if (preview) {
         const diff = unifiedDiff(before, fs.readFileSync(args.path, 'utf8'), args.path);
         if (diff) ui.diff?.(diff.length > 12000 ? diff.slice(0, 12000) + '\n… diff truncated' : diff);
@@ -128,6 +169,6 @@ export async function handleTool(call, permissions, ui, signal) {
   } catch (error) { result = `Tool error: ${error.message}`; }
   // Cap what goes back into context independently from the larger file/process capture cap.
   if (result.length > 16000) result = result.slice(0, 16000) + '\n[tool result truncated to 16000 characters]';
-  ui.tool(call.function.name, args, result);
-  return { role: 'tool', tool_call_id: call.id, content: result };
+  ui.tool(call.function.name, args, image ? `${result} [image attached]` : result);
+  return { role: 'tool', tool_call_id: call.id, content: result, ...(image ? { image } : {}) };
 }

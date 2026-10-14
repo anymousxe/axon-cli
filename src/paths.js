@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { migrateModel } from './models.js';
 
 export function configDir(env = process.env, platform = process.platform, home = os.homedir()) {
   if (env.AXON_CONFIG_DIR) return path.resolve(env.AXON_CONFIG_DIR);
@@ -32,6 +33,13 @@ export function readJSON(file, fallback) {
   }
 }
 
-export function readConfig(dir) { return readJSON(path.join(dir, 'config.json'), {}); }
+export function readConfig(dir) {
+  const config = readJSON(path.join(dir, 'config.json'), {});
+  if (typeof config.model === 'string' && migrateModel(config.model) !== config.model) {
+    config.model = migrateModel(config.model);
+    saveConfig(dir, config);
+  }
+  return config;
+}
 export function saveConfig(dir, config) { privateWrite(path.join(dir, 'config.json'), JSON.stringify(config, null, 2) + '\n'); }
 export function apiKey(dir) { return process.env.AXON_API_KEY || readConfig(dir).apiKey; }

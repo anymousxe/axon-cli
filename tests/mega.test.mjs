@@ -104,7 +104,7 @@ test('automatic compaction persists retained turns, savings, lock-in markers and
   const old = process.env.AXON_BASE_URL, threshold = process.env.AXON_COMPACT_THRESHOLD;
   process.env.AXON_BASE_URL = fixture.url; process.env.AXON_COMPACT_THRESHOLD = '.001';
   try {
-    const session = new Session(dir), engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-1.8-flash', effort: 'off' }, ui: silent, permissions: new Permissions(null, silent) });
+    const session = new Session(dir), engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-2-cobalt', effort: 'off' }, ui: silent, permissions: new Permissions(null, silent) });
     session.add({ role: 'user', content: 'Historical decisions. '.repeat(1000) });
     for (let i = 0; i < 6; i++) { session.add({ role: 'user', content: 'Keep ' + i }); session.add({ role: 'assistant', content: 'OK ' + i }); }
     const recent = session.messages.slice(-12); engine.setLockIn(true);
@@ -113,7 +113,7 @@ test('automatic compaction persists retained turns, savings, lock-in markers and
     assert.ok(engine.projectedContext < 2000);
     engine.setLockIn(false); assert.equal(new Session(dir, session.id).lockin, false);
     const noOlder = await engine.compact(); assert.equal(noOlder.changed, false);
-    assert.ok(fixture.requests.every(r => !r.tools && r.model === 'axon-1.8-lightning'));
+    assert.ok(fixture.requests.every(r => !r.tools && r.model === 'axon-2-cobalt'));
   } finally { if (old === undefined) delete process.env.AXON_BASE_URL; else process.env.AXON_BASE_URL = old; if (threshold === undefined) delete process.env.AXON_COMPACT_THRESHOLD; else process.env.AXON_COMPACT_THRESHOLD = threshold; await fixture.close(); fs.rmSync(dir, { recursive: true }); }
 });
 
@@ -127,7 +127,7 @@ test('agent loop actually continues beyond eight rounds when locked, but stops a
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-loop-'));
   try {
     for (const [locked, finalAt, expected] of [[false, 10, 8], [true, 10, 10], [true, 100, 24]]) {
-      const session = new Session(dir), engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-1.8-flash', effort: 'low' }, ui: silent, permissions: new Permissions(null, silent) });
+      const session = new Session(dir), engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-2-cobalt', effort: 'low' }, ui: silent, permissions: new Permissions(null, silent) });
       engine.setLockIn(locked); let count = 0;
       engine.request = async () => { count++; return { content: count === finalAt ? 'Final answer' : '', reasoning: '', toolCalls: count === finalAt ? [] : [{ id: 'call_' + count, function: { name: 'list_dir', arguments: '{"path":"."}' } }] }; };
       await engine.turn('Work until done');
@@ -139,7 +139,7 @@ test('agent loop actually continues beyond eight rounds when locked, but stops a
 test('empty or failed compaction cannot replace history; unpaired tool results stay in recent groups', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-atomic-'));
   try {
-    const session = new Session(dir), engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-1.8-flash', effort: 'off' }, ui: silent, permissions: new Permissions(null, silent) });
+    const session = new Session(dir), engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-2-cobalt', effort: 'off' }, ui: silent, permissions: new Permissions(null, silent) });
     for (let i = 0; i < 8; i++) session.add({ role: 'user', content: 'History '.repeat(100) });
     const before = JSON.stringify(session.messages);
     engine.request = async () => ({ content: ' ' });

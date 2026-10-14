@@ -20,7 +20,12 @@ def run(source, actions):
             if ready:
                 try: out += os.read(master,65536)
                 except OSError: break
-    drain(.25)
+    startup_deadline=time.time()+4
+    while b'\x1b[?2004h' not in out and time.time()<startup_deadline:
+        drain(.05)
+    if b'\x1b[?2004h' not in out:
+        p.kill(); p.wait(timeout=3)
+        raise AssertionError('input terminal did not become ready: '+repr(out))
     for action in actions:
         if action == 'RESIZE':
             fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 18, 60, 0, 0)); p.send_signal(signal.SIGWINCH)

@@ -21,7 +21,7 @@ async function withServer(handler, callback) {
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   }
 }
-const base = { key: 'fixture-key', model: 'axon-1.8-flash', messages: [{ role: 'user', content: 'hello' }] };
+const base = { key: 'fixture-key', model: 'axon-2-cobalt', messages: [{ role: 'user', content: 'hello' }] };
 const sse = (res, object) => res.write(`data: ${JSON.stringify(object)}\n\n`);
 
 test('aborting a partial stream saves the partial assistant response and keeps chat usable', async () => {
@@ -34,7 +34,7 @@ test('aborting a partial stream saves the partial assistant response and keeps c
     }, async () => {
       const session = new Session(dir);
       const ui = { ...silent, answer: () => controller.abort() };
-      const engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-1.8-flash', effort: 'off' }, ui, permissions: new Permissions(null, ui) });
+      const engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-2-cobalt', effort: 'off' }, ui, permissions: new Permissions(null, ui) });
       await assert.rejects(engine.turn('hello', [], controller.signal));
       const restored = new Session(dir, session.id);
       assert.equal(restored.messages.length, 2);

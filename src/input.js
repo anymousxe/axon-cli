@@ -25,12 +25,12 @@ export class Input {
       this.rl.on('close', () => { this.closed = true; if (this.waiter) { this.waiter(null); this.waiter = null; } });
     }
   }
-  configure({ chats, status, palette, attachments, attach, inspector } = {}) { this.inspector = inspector; this.chats = chats; this.status = status; this.attachments = attachments; this.attach = attach; if (palette) this.palette = palette; }
+  configure({ chats, visibility, status, palette, attachments, attach, inspector } = {}) { this.inspector = inspector; this.chats = chats; this.visibility = visibility; this.status = status; this.attachments = attachments; this.attach = attach; if (palette) this.palette = palette; }
   openPanel(tab = 'session') {
     this.panelTab = Math.max(0, ['session', 'usage', 'memory', 'tools'].indexOf(tab)); this.panel = true;
     if (this.waiter) this.render();
   }
-  items() { return this.menuEnabled && !this.panel && !this.muted && !this.dismissed ? completions(this.line, this.line.startsWith('/resume ') ? this.chats?.() || [] : []) : []; }
+  items() { return this.menuEnabled && !this.panel && !this.muted && !this.dismissed ? completions(this.line, this.line.startsWith('/resume ') ? this.chats?.() || [] : [], this.visibility?.()) : []; }
   erase() {
     if (!this.terminal || !this.rows) return;
     process.stderr.write('\r' + (this.rows > 1 ? `\x1b[${this.rows - 1}A` : '') + '\x1b[J'); this.rows = 0;

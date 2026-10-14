@@ -7,6 +7,8 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { Palette, terminalCaps, safeText, highlight, AnswerRenderer, unifiedDiff, colorDiff } from '../src/render.js';
 import { completions, COMMANDS } from '../src/commands.js';
+import { MODELS as CLI_MODELS } from '../src/models.js';
+const MODELS_COUNT = Object.keys(CLI_MODELS).length;
 import { Input } from '../src/input.js';
 import { Engine } from '../src/engine.js';
 import { Session, usageSummary } from '../src/storage.js';
@@ -60,7 +62,7 @@ test('command menu fuzzy filtering and argument menus carry descriptions/prices'
   assert.equal(completions('/mdl')[0].label, '/model');
   assert.equal(completions('//model').length, 0);
   assert.equal(completions('ordinary text').length, 0);
-  const models = completions('/model '); assert.equal(models.length, 4); assert.match(models[0].description, /per 1M/);
+  const models = completions('/model '); assert.equal(models.length, MODELS_COUNT - 2); /* Regent and Monarch default hidden */ assert.match(models[0].description, /per 1M/);
   assert.equal(completions('/think h')[0].value, '/think high');
   assert.equal(completions('/theme l')[0].value, '/theme light');
   assert.equal(completions('/resume abc', [{ id: 'abc123', title: 'Chat' }])[0].description, 'Chat');
@@ -93,12 +95,12 @@ test('side questions stay out of context, compact survives resume, retry replace
   process.env.AXON_BASE_URL = fixture.url;
   try {
     const session = new Session(dir);
-    const engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-1.8-flash', effort: 'high', showThinking: false }, ui: silent, permissions: new Permissions(null, silent) });
+    const engine = new Engine({ dir, key: 'fixture-key', session, settings: { model: 'axon-2-cobalt', effort: 'high', showThinking: false }, ui: silent, permissions: new Permissions(null, silent) });
     await engine.turn('Hello'); const messages = JSON.stringify(session.messages), title = session.title;
     await engine.sideQuestion('side only');
     assert.equal(JSON.stringify(session.messages), messages); assert.equal(session.title, title);
-    const side = fixture.requests.at(-1); assert.equal(side.model, 'axon-1.8-lightning'); assert.equal(side.reasoning_effort, undefined); assert.equal(side.messages.length, 1); assert.equal(side.tools, undefined);
-    assert.equal(usageSummary(dir).models['axon-1.8-lightning'].requests, 1);
+    const side = fixture.requests.at(-1); assert.equal(side.model, 'axon-2-cobalt'); assert.equal(side.reasoning_effort, undefined); assert.equal(side.messages.length, 1); assert.equal(side.tools, undefined);
+    assert.equal(usageSummary(dir).models['axon-2-cobalt'].requests, 2); // main turn + side question share the flagship
     await engine.retry(); assert.equal(session.messages.length, 2); assert.equal(new Session(dir, session.id).messages.length, 2);
     session.add({ role: 'user', content: 'Long context. '.repeat(1000) });
     for (let i = 0; i < 6; i++) { session.add({ role: 'user', content: 'Recent ' + i }); session.add({ role: 'assistant', content: 'Noted' }); }
@@ -151,9 +153,9 @@ test('bundled REPL: fast toggle, theme persistence, status masking and JSON comm
     });
     assert.equal(result.code, 0, result.err); const events = result.out.trim().split('\n').map(x => JSON.parse(x));
     assert.ok(events.some(e => e.type === 'btw')); assert.ok(events.some(e => e.type === 'usage'));
-    assert.match(events.find(e => e.command === '/status').text, /axon-1.8-flash/);
+    assert.match(events.find(e => e.command === '/status').text, /Axon 2 Cobalt/);
     assert.doesNotMatch(result.out, /fixture-key|\x1b/);
-    assert.equal(fixture.requests[0].model, 'axon-1.8-lightning'); assert.equal(fixture.requests[0].reasoning_effort, undefined);
+    assert.equal(fixture.requests[0].model, 'axon-2-cobalt'); assert.equal(fixture.requests[0].reasoning_effort, undefined);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'config.json'))).theme, 'light');
   } finally { await fixture.close(); fs.rmSync(dir, { recursive: true }); }
 });

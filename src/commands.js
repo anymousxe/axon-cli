@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { MODELS, EFFORTS } from './models.js';
+import { MODELS, EFFORTS, isVisible, priceText } from './models.js';
 export const COMMANDS = [
   ['/panel', 'Tabbed session / usage / memory / tools inspector'], ['/lockin', 'Lock in: max effort, tools, 24 rounds (on|off)'],
-  ['/btw', 'Ask Lightning without adding context'], ['/fast', 'Toggle Lightning with thinking off'],
+  ['/btw', 'Ask a side question without adding context'], ['/fast', 'Toggle Fast mode (3x cost, paid plans)'],
   ['/compact', 'Compact older turns; auto|off toggles automation'], ['/retry', 'Resend the last user turn'],
   ['/copy', 'Copy the last assistant answer'], ['/usage', 'Plan usage bars: tokens, images, renewal'],
   ['/login', 'Log in with a device code from the web app'], ['/logout', 'Remove the stored API key'],
   ['/status', 'Model, key, context and session details'], ['/theme', 'Choose dark, light or auto palette'],
-  ['/model', 'List or switch models'], ['/think', 'Set effort or show/hide reasoning'],
+  ['/model', 'List or switch models'], ['/models', 'Show or hide models (hide|show <id>)'], ['/think', 'Set effort or show/hide reasoning'],
   ['/hide-thinking', 'Toggle reasoning visibility'], ['/img', 'Attach image from file or clipboard'],
   ['/imgs', 'List pending image attachments'], ['/images', 'Clear queued images (/images clear)'], ['/tools', 'Toggle permission-gated tools'],
   ['/cost', 'Session and all-time costs'], ['/memory', 'List persistent memories'],
@@ -30,15 +30,16 @@ export function fuzzyScore(query, text) {
   for (const char of query) { const next = text.indexOf(char, at + 1); if (next < 0) return -1; score += next === at + 1 ? 10 : 1; at = next; }
   return score;
 }
-export function completions(line, chats = []) {
+export function completions(line, chats = [], overrides) {
   if (!line.startsWith('/') || line.startsWith('//') || line.includes('\n')) return [];
   const match = line.match(/^(\/\S+)\s+(.*)$/);
   let rows, query;
   if (!match) { query = line; rows = COMMANDS.map(([value, description]) => ({ value: value + ' ', label: value, description })); }
   else {
     const [, command, arg] = match; query = arg;
-    if (command === '/model') rows = Object.entries(MODELS).map(([value, price]) => ({ value, description: `$${price.input.toFixed(2)} in / $${price.output.toFixed(2)} out per 1M` }));
-    else if (command === '/think') rows = [...EFFORTS, 'show', 'hide'].map(value => ({ value, description: 'Thinking ' + value }));
+    if (command === '/model') rows = Object.keys(MODELS).filter(value => isVisible(value, overrides)).map(value => ({ value, description: priceText(value) }));
+    else if (command === '/models') rows = ['hide', 'show'].flatMap(action => Object.keys(MODELS).map(id => ({ value: `${action} ${id}`, description: MODELS[id].name })));
+    else if (command === '/think') rows = [...EFFORTS, 'standard', 'show', 'hide'].map(value => ({ value, description: 'Thinking ' + value }));
     else if (command === '/theme') rows = ['dark', 'light', 'auto'].map(value => ({ value, description: value === 'auto' ? 'Detect terminal background' : value + ' background palette' }));
     else if (command === '/resume') rows = chats.map(chat => ({ value: chat.id, description: chat.title }));
     else if (command === '/compact') rows = ['auto', 'off'].map(value => ({ value, description: 'Auto compaction ' + value }));

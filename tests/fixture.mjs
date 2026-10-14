@@ -19,7 +19,7 @@ export async function startFixture() {
     const emit = object => body.stream ? res.write(`data: ${JSON.stringify(object)}\r\n\r\n`) : chunks.push(object);
     if (body.reasoning_effort) emit({ choices: [{ delta: { reasoning_content: 'I will check this carefully. ' } }] });
     const hasImage = body.messages.some(m => Array.isArray(m.content) && m.content.some(p => p.type === 'image_url'));
-    if (hasImage && body.model !== 'axon-1.8-flash') { emit({ error: { message: 'text-only model received image' } }); res.end(); return; }
+    if (hasImage && !['axon-2-cobalt', 'axon-2-cobalt'].includes(body.model)) { emit({ error: { message: 'text-only model received image' } }); res.end(); return; }
     let answer;
     const last = body.messages.at(-1);
     if (body.tools?.length && text?.includes('FIXTURE_TOOL') && last.role !== 'tool') {

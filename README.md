@@ -10,12 +10,6 @@
 conversation, attach a screenshot, or let Axon work with your files—with your permission.
 Linux, Windows, and macOS. One portable file. No runtime dependencies. Bring your own API key.
 
-## Axon 1.8 Flash concept film
-
-A 24-second copper-core 3D ad, with a responsive interactive web edition and original synthesized audio.
-[Download the 1080p film](https://github.com/anymousxe/axon-cli/releases/tag/axon-flash-ad-v1)
-or [run the interactive edition locally](docs/ad/README.md). The ad is independent of the CLI runtime.
-
 ## v1.3 at a glance
 
 | Feature | What you get |
@@ -34,7 +28,7 @@ ASCII preview (the live terminal colors the accents and animates while working):
 ```text
 axon > /lockin on
 Lock-in ON - max effort - tools on - 24 rounds - approvals still required
-[LOCKED-IN] axon-1.8-flash . max . ctx 38% . $0.0042 session
+[LOCKED-IN] axon-2-cobalt . max . ctx 38% . $0.0042 session
   >1[session] 2[usage] 3[memory] 4[tools]
   Refactor the parser
   Context: ~9120 / 24000 (38%)
@@ -45,30 +39,34 @@ Lock-in ON - max effort - tools on - 24 rounds - approvals still required
 ## Install
 
 Install [Node.js 18+](https://nodejs.org/) first (a current LTS release is recommended).
-The following install the versioned npm package from GitHub Releases, **not the npm registry**.
-No Git checkout, build tools, or `sudo`-executed installer scripts required.
-`--allow-remote=root` explicitly permits this direct download on npm 12+; older npm versions may
-warn about the extra option and can omit it.
+The official standalone channel is hosted at
+[`/cli/manifest.json`](https://axon-chat-nu.vercel.app/cli/manifest.json).
+It lists the current version, versioned `.mjs` download, byte length, and SHA-256.
+The npm registry package is not currently published.
 
-**Linux — Bash**
+**Linux / macOS**
 ```sh
-npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.3.0/anymousxe-axon-cli-1.3.0.tgz
+mkdir -p "$HOME/.local/bin"
+curl --fail --location https://axon-chat-nu.vercel.app/cli/axon-1.5.3.mjs -o "$HOME/.local/bin/axon.mjs"
+chmod +x "$HOME/.local/bin/axon.mjs"
+ln -sf "$HOME/.local/bin/axon.mjs" "$HOME/.local/bin/axon"
 ```
+Add `$HOME/.local/bin` to your PATH if needed.
 
 **Windows — PowerShell**
 ```powershell
-npm install -g --allow-remote=root https://github.com/anymousxe/axon-cli/releases/download/v1.3.0/anymousxe-axon-cli-1.3.0.tgz
+Invoke-WebRequest https://axon-chat-nu.vercel.app/cli/axon-1.5.3.mjs -OutFile axon.mjs
+node .\axon.mjs login
+node .\axon.mjs
 ```
 
-Then run `axon`. First run opens a hidden-key wizard, validates your key with a tiny **billable** request,
-and saves it in your platform's private config directory. `axon login` replaces it later.
-If your PowerShell policy blocks npm's `.ps1` shims, use `npm.cmd` and `axon.cmd`.
-On Linux, use a user-owned Node installation if your global npm prefix is not writable.
+Run `axon login` to link your account. Install in a user-writable directory;
+the updater never requests administrator access.
 
 <details>
 <summary>Portable single-file installation / running from source</summary>
 
-Download [`axon.mjs`](https://github.com/anymousxe/axon-cli/releases/download/v1.3.0/axon.mjs) and run:
+Download [`axon-1.5.3.mjs`](https://axon-chat-nu.vercel.app/cli/axon-1.5.3.mjs), save it as `axon.mjs`, and run:
 
 ```sh
 node /path/to/axon.mjs --help
@@ -84,6 +82,35 @@ npm install -g git+https://github.com/anymousxe/axon-cli.git
 Or clone and run `node bin/axon.mjs`. The committed bundle needs no build step.
 </details>
 
+## Automatic updates
+
+Interactive TTY chat checks the official HTTPS channel at most once every 24 hours,
+in-process without waiting before chat starts. A successful update takes effect on
+the **next invocation**, never restarting an active conversation. The whole operation
+has an eight-second deadline; exiting chat cancels it. Offline failures are silent.
+Help, version, tests, one-shot prompts, JSON, piped input, and account commands do not
+check automatically. `axon update` (or `node axon.mjs update`) explicitly checks now,
+even with automatic updates disabled, and reports a generic failure if unavailable.
+
+Disable checks with `AXON_NO_AUTO_UPDATE=1`, `--no-auto-update`, or `"autoUpdate": false`
+in your existing `config.json`. Keep your other config fields intact. Checks store
+only a timestamp in `update.json`; they send no API key or account information.
+`AXON_BASE_URL` does not change the release channel.
+
+Only newer stable semantic versions are installed. Downloads are capped at 4 MiB,
+verified against manifest byte length and SHA-256, syntax-checked by Node, then
+atomically replace the real launcher with rollback on replacement verification failure.
+Executable permissions, symlinks, config, keys, and chats are preserved. No registry,
+sudo, detached updater, or persistent background process is used.
+Source checkouts should run `npm run build` to refresh `bin/axon.mjs`; symlinks to
+that standalone bundle update normally. A later local build replaces that bundle
+with the checkout's source version.
+
+Release maintainers run `npm run release -- /absolute/path/to/site/public/cli`.
+This builds the regular standalone launcher and writes `manifest.json` plus the
+immutable versioned asset to the explicit directory. Deploy both together on the
+official site; bump the package and source versions before changing a released asset.
+
 ## Quickstart
 
 ```sh
@@ -92,7 +119,7 @@ axon -p "Explain this project briefly" # One-shot, streamed to stdout
 cat error.log | axon -p "Find the cause"
 axon -c                               # Continue your last chat
 axon -r 20260919T215942-39f63f          # Resume an ID from /chats
-axon --model axon-1.8-lightning -p "Summarize this idea"
+axon --model axon-2-cobalt -p "Summarize this idea"
 axon --think high -p "Check this proof carefully"
 axon -p "What is wrong with this UI? ./screenshot.png" # Auto-attach image paths
 axon -i screenshot.png -p "Describe this"              # Explicit flag still works
@@ -121,7 +148,7 @@ Your favorite color is teal.
 
 axon › /cost
 Session: $0.0000 · All-time: $0.0000 (includes estimates)
-axon-1.8-flash: session $0.0000 / all-time $0.0000 · 99 in / 7 out · 1 requests
+axon-2-cobalt: session $0.0000 / all-time $0.0000 · 99 in / 7 out · 1 requests
 
 axon › /exit
 Chat saved: 20260919T215942-39f63f
@@ -129,7 +156,7 @@ Chat saved: 20260919T215942-39f63f
 
 ## What feels good
 
-- **Fast by default.** Flash; no extra reasoning effort unless you ask for it.
+- **Fast by default.** Axon 2 Cobalt; no extra reasoning effort unless you ask for it.
 - **Streamed answers and thinking.** Opt-in reasoning appears in a amber, pulsing `∴ thinking` block.
   Hide its display without changing the requested effort or billing.
 - **Useful context.** Persistent memory and complete recent turns, not orphaned tool messages.
@@ -138,7 +165,7 @@ Chat saved: 20260919T215942-39f63f
   A TTY activity indicator runs while waiting; elapsed time and tokens follow each answer.
 - **Paste-anywhere images.** Ctrl+V attaches a clipboard image or inserts text at the cursor.
   Paste or type a local image path to attach it; dim chips show names and dimensions.
-- **Images that reach the right model.** Native Flash input or a Flash description passed to a text-only model.
+- **Images that reach the right model.** Every model accepts images natively.
 - **Tools you control.** Read, write, edit, list, and run commands. On in interactive chat; off for one-shot/pipes unless requested. No silent approvals.
 - **Script-friendly.** Answers on stdout, UI on stderr, NDJSON when requested, friendly error exit codes.
 - **Resilient by design.** Ctrl-C cancels without losing the chat; retries for rate limits/server errors;
@@ -148,9 +175,9 @@ Chat saved: 20260919T215942-39f63f
 
 | Command | Action |
 | --- | --- |
-| `/btw <question>` | Lightning side answer, never added to chat messages or future context; usage is still billed and recorded |
-| `/fast` | Toggle Lightning + thinking off; toggle again to restore previous settings |
-| `/compact [auto\|off]` | Compact older history with Lightning; keep six recent turns; toggle automatic compaction |
+| `/btw <question>` | Side answer from Axon 2 Cobalt, never added to chat messages or future context; usage is still billed and recorded |
+| `/fast` | Toggle Fast mode (3x cost, paid plans only; applies to streamed replies without tools) |
+| `/compact [auto\|off]` | Compact older history with Axon 2 Cobalt; keep six recent turns; toggle automatic compaction |
 | `/lockin [on\|off]` | Max effort + tools + 24-round agent loop; off restores prior settings |
 | `/panel [session\|usage\|memory\|tools]` | Tabbed inspector (also Ctrl+T) |
 | `/retry` | Replace the last user turn and its replies with a fresh response; old transcript stays on disk |
@@ -159,8 +186,9 @@ Chat saved: 20260919T215942-39f63f
 | `/status` | Version, model, effort, masked key, context estimate, session ID, theme and cost |
 | `/theme dark\|light\|auto` | Persist the terminal palette; auto uses `COLORFGBG` when available, otherwise dark |
 | `/hide-thinking` | Toggle reasoning display without changing effort or billing |
-| `/model [name]` | List models or switch; save as the new default |
-| `/think off\|low\|medium\|high\|max` | Select reasoning effort; `off` omits it from requests |
+| `/model [id]` | List visible models (Flagship / Axon 2.1 / Axon 2) or switch; free plan shows only Axon 2 Cobalt |
+| `/models [hide\|show <id>]` | List every model with its visibility; hide or show one (saved in config) |
+| `/think off\|xlite\|low\|medium\|high\|xhigh\|max` | Select reasoning effort; `off` omits it from requests, `xlite` (alias `standard`) is the cheapest. On the free plan: Extended thinking = standard / low / medium / high |
 | `/think show\|hide` | Show/hide reasoning text |
 | `/img [path]` | Queue an image from a file or the clipboard |
 | `/imgs` | List pending image chips with names and dimensions |
@@ -175,7 +203,7 @@ Chat saved: 20260919T215942-39f63f
 | `/new` | Start a fresh session |
 | `/help` · `/exit` | Help / save and leave |
 
-CLI settings flags apply to that invocation. Model, effort, thinking visibility, and theme commands persist. `/fast` is temporary and restores the previous model/effort when toggled off.
+CLI settings flags apply to that invocation. Model, effort, thinking visibility, and theme commands persist. `/fast` is temporary for the session.
 Use `//` to send a prompt beginning with a literal slash. Ctrl-D exits on empty input; Ctrl-C cancels an active
 request, or twice at an idle prompt exits. Double-Esc also interrupts an active request. The editor uses raw keys on capable TTYs, with a plain-line fallback for dumb terminals, legacy Windows consoles, and piped input.
 
@@ -198,7 +226,7 @@ Illustrative terminal sample (the actual UI colors these lines):
 ```text
   ϟ AXON 1.2.0
 
-axon-1.8-flash · off · ctx 2% · $0.0004 session
+Axon 2 Cobalt · off · ctx 2% · $0.0004 session
 › /model   List or switch models
   /memory  List persistent memories
 axon › /m
@@ -252,16 +280,16 @@ unless `--no-tools` is given. Approval grants themselves never persist.
 
 ### Automatic and manual compaction
 
-`/compact` summarizes older turns with `axon-1.8-lightning`, keeping the latest **six user
+`/compact` summarizes older turns with Axon 2 Cobalt, keeping the latest **six user
 turns and all their assistant/tool messages verbatim**. If fewer than seven turns exist,
 it reports that there is nothing old enough to compact. `/compact auto` enables automatic
 compaction (default); `/compact off` disables it for the process. Auto-compaction checks
 projected context before a turn and between completed tool rounds.
 
-The default threshold is **80% of the conservative 24,000-token local input budget**.
-Server model windows are not published here, so this is deliberately not a claim about
-actual maximum model context. Usage-ledger prompt/output tokens plus local growth inform
-the projection; lifetime usage is never mistaken for context usage.
+The default threshold is **80% of the model's local input budget**: 2,000,000 tokens
+(512,000 on the free plan). Usage-ledger
+prompt/output tokens plus local growth inform the projection; lifetime usage is never
+mistaken for context usage.
 `AXON_COMPACT_THRESHOLD=0.8` or `80` overrides the threshold (`0.001` is useful for testing).
 
 Compaction is billable and lossy. Full transcripts remain on disk; older active history is
@@ -278,13 +306,15 @@ exceed the local budget, compaction cannot shrink them; shorten the prompt or `/
 axon › /img ./screenshot.png
 Queued 1 image(s). Add your prompt next.
 axon › Explain this layout.
-◈ Image route: native → axon-1.8-flash (1 image)
+◈ Image route: native → axon-2-cobalt (1 image)
 ```
 
-- **Flash:** PNG/JPEG/GIF/WebP bytes are sent as base64 multimodal content.
-- **Lightning, 1.6, 1.6 Pro:** Flash first describes the image precisely; that description is then
-  injected as explicitly untrusted context for the chosen text-only model. Both requests count toward cost.
-- Switching a native-image conversation to a text-only model also routes retained images through Flash.
+- PNG/JPEG/GIF/WebP bytes are sent as base64 multimodal content to the selected model.
+
+Axon 2 Cobalt is the default; select it with `/model axon-2-cobalt` or `--model axon-2-cobalt`. Its input/output
+prices remain $0.40/$1.20 per million tokens. Existing saved selections of the retired
+Axon 2 model migrate automatically; API keys, settings, and chat history are preserved.
+
 ### Paste an image—no command needed
 
 1. Copy an image, focus Axon, and press **Ctrl+V**. In raw-key mode Axon reads the system clipboard:
@@ -347,14 +377,25 @@ allowing broad access. Never approve a command just because the model says it is
 
 ## Models and cost
 
-Prices in USD per **1 million** tokens:
+Prices in USD per **1 million** tokens. Axon 2 Cobalt (default) is on every plan; the rest need a
+paid plan. Regent and Monarch are hidden by default; run `/models show axon-2-regent` to list them.
 
-| Model | Input | Output | Images |
-| --- | ---: | ---: | --- |
-| `axon-1.6` | $0.05 | $0.15 | Flash description |
-| `axon-1.6-pro` | $0.15 | $0.40 | Flash description |
-| **`axon-1.8-flash`** (default) | **$0.10** | **$0.30** | **Native** |
-| `axon-1.8-lightning` | $0.03 | $0.08 | Flash description |
+| Model | Input | Output |
+| --- | ---: | ---: |
+| **`axon-2-cobalt`** Axon 2 Cobalt (flagship, default) | **$0.40** | **$1.20** |
+| `axon-2.1-crimson` Axon 2.1 Crimson | $1.40 | $3.60 |
+| `axon-2.1-silver` Axon 2.1 Silver | $2.80 | $7.00 |
+| `axon-2.1-sovereign` Axon 2.1 Sovereign | $4.50 | $11.00 |
+| `axon-2-regent` Axon 2 Regent (hidden by default) | $0.80 | $2.40 |
+| `axon-2-monarch` Axon 2 Monarch (hidden by default) | $2.00 | $4.00 |
+
+`xlite` thinking costs 0.4x the listed rate; Fast mode costs 3x. Saved selections of any model no longer
+offered migrate silently to Axon 2 Cobalt.
+
+**Free plan:** the model is fixed to Axon 2 Cobalt with a 512K-token context. Thinking defaults to Standard
+(unlimited); `/think` offers Extended thinking (low / medium / high), which draws on a small monthly budget
+and quietly falls back to Standard when it is used up. Fast mode is not available. If the CLI cannot read
+your plan it treats it as paid; the server enforces limits.
 
 All models default to **fast pass**: `reasoning_effort` is omitted. Opt in with `--think` or `/think`.
 
@@ -388,7 +429,7 @@ identity or a fresh validation request. `axon logout` removes the saved key, not
 
 Config contains `config.json`, `chats/*.jsonl`, chat title sidecars, `last-chat`, `memory.md`, `usage.jsonl`,
 and `usage.json`. Files are plaintext; Unix config files are private (`0600`, directory `0700`). Windows
-uses your profile ACLs. There is **no telemetry or background update check**.
+uses your profile ACLs. There is **no telemetry**. Automatic release checks are described above.
 
 Memory keeps the newest ~8,000 characters (~2k estimated tokens). The local context input budget is
 24,000 estimated tokens, **not a claim about the server's maximum window**. Trimming removes oldest whole

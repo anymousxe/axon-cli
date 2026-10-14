@@ -1,3 +1,4 @@
+import { MODELS, effortLabel } from './models.js';
 import { safeText, terminalCaps, Palette, AnswerRenderer, colorDiff, fitCells, gradient, renderMarkdown } from './render.js';
 export class UI {
   constructor({ json = false, color = terminalCaps().color, theme = 'auto' } = {}) {
@@ -108,7 +109,7 @@ export class UI {
     this.info('└');
   }
   statusText(state, cost, context) {
-    return `${state.lockin ? '🔒 LOCKED-IN · ' : ''}${state.fast ? '⚡ ' : ''}${state.model} · ${state.effort} · ctx ${context}% · ${cost} session`;
+    return `${state.lockin ? '🔒 LOCKED-IN · ' : ''}${state.fast ? '⚡ ' : ''}${MODELS[state.model]?.name ?? state.model} · ${effortLabel(state.effort)} · ctx ${context}% · ${cost} session`;
   }
   status(state, cost, context) {
     this.stopActivity(); if (this.json) return;

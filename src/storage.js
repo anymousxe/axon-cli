@@ -128,7 +128,7 @@ export function contextFor(messages, memory = '', budget = CONTEXT_TOKENS, summa
   for (let i = groups.length - 1; i >= 0; i--) {
     const size = groups[i].reduce((n, m) => n + messageTokens(m), 0);
     if (used + size > budget) {
-      if (!kept.length) throw new Error('This turn is too large for the local 24k-token input budget. Shorten the prompt, remove images, or /clear.');
+      if (!kept.length) throw new Error('This turn is too large for the local input budget. Shorten the prompt, remove images, or /clear.');
       break;
     }
     kept.unshift(...groups[i]); used += size;
@@ -138,7 +138,7 @@ export function contextFor(messages, memory = '', budget = CONTEXT_TOKENS, summa
 export function recordUsage(dir, session, model, usage, messages, responseText, metadata = {}) {
   const estimated = !usage || !Number.isFinite(usage.prompt_tokens) || !Number.isFinite(usage.completion_tokens);
   const counts = estimated ? { prompt_tokens: messages.reduce((n, m) => n + messageTokens(m), 0), completion_tokens: tokensFor(responseText) } : { prompt_tokens: Math.max(0, usage.prompt_tokens), completion_tokens: Math.max(0, usage.completion_tokens) };
-  const entry = { type: 'usage', ...metadata, model, ...counts, estimated, cost: costFor(model, counts) };
+  const entry = { type: 'usage', ...metadata, model, ...counts, estimated, cost: costFor(model, counts, metadata) };
   session?.append(entry);
   // An append-only ledger prevents parallel CLI processes from losing usage updates.
   ensureDir(dir);

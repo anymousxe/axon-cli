@@ -48,13 +48,14 @@ export async function* sseEvents(body) {
 
 const UNAVAILABLE = 'Axon inference is temporarily unavailable. Please try again in a moment.';
 
-export async function completion({ key, model, effort = 'off', messages, tools, signal, onDelta = () => {}, onRetry = () => {}, maxTokens, retries = 3 }) {
+export async function completion({ key, model, effort = 'off', fast = false, messages, tools, signal, onDelta = () => {}, onRetry = () => {}, maxTokens, retries = 3 }) {
   // The live Axon endpoint currently drops tool_calls from SSE. Use its
   // OpenAI JSON response for tool-enabled rounds; regular chat stays streamed.
   const body = { model, messages, stream: !tools?.length };
   if (body.stream) body.stream_options = { include_usage: true };
   if (effort !== 'off') { body.reasoning_effort = effort; body.include_reasoning = true; }
   if (tools?.length) { body.tools = tools; body.tool_choice = 'auto'; }
+  if (fast && body.stream) body.fast = true;
   if (maxTokens) body.max_tokens = maxTokens;
   let response;
   // Vercel-style edge challenge: bursts of rapid non-browser requests get
@@ -140,7 +141,7 @@ export async function completion({ key, model, effort = 'off', messages, tools, 
     if (retries <= 0) throw new Error('Axon inference is temporarily unavailable. Please retry shortly.');
     onRetry(4 - retries);
     await sleep(1000, undefined, { signal });
-    return completion({ key, model, effort, messages, tools, signal, onDelta, onRetry, maxTokens, retries: retries - 1 });
+    return completion({ key, model, effort, fast, messages, tools, signal, onDelta, onRetry, maxTokens, retries: retries - 1 });
   }
   const toolCalls = [...calls.values()];
   if (!content && !toolCalls.length) throw new Error('Axon returned an empty or interrupted response.');

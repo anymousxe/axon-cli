@@ -1,7 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== '--release-dir')) throw new Error('Usage: node scripts/build.mjs [--release-dir <directory>]');
+const packageVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+const sourceVersion = fs.readFileSync(path.join(root, 'src/cli.js'), 'utf8').match(/export const VERSION = '([^']+)';/)?.[1];
+if (packageVersion !== sourceVersion) throw new Error('Package and source versions must match');
 const entry = path.join(root, 'src/cli.js');
 const visited = new Set(), output = [];
 function visit(file) {
@@ -32,3 +38,17 @@ const bundle = '#!/usr/bin/env node\n// Generated from src/ by scripts/build.mjs
 fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
 fs.writeFileSync(path.join(root, 'bin/axon.mjs'), bundle, { mode: 0o755 });
 console.log(`Built bin/axon.mjs (${Buffer.byteLength(bundle)} bytes)`);
+if (args.length) {
+  const releaseDir = path.resolve(args[1]);
+  const asset = `axon-${packageVersion}.mjs`;
+  const bytes = Buffer.from(bundle);
+  fs.mkdirSync(releaseDir, { recursive: true });
+  const assetPath = path.join(releaseDir, asset);
+  if (fs.existsSync(assetPath) && !fs.readFileSync(assetPath).equals(bytes)) throw new Error('Versioned releases are immutable; bump the version first');
+  fs.writeFileSync(assetPath, bytes, { mode: 0o755 });
+  const manifest = { version: packageVersion, path: `/cli/${asset}`, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+  const pending = path.join(releaseDir, `manifest.${process.pid}.tmp`);
+  fs.writeFileSync(pending, JSON.stringify(manifest, null, 2) + '\n');
+  fs.renameSync(pending, path.join(releaseDir, 'manifest.json'));
+  console.log(`Prepared ${asset} and manifest.json in ${releaseDir}`);
+}
