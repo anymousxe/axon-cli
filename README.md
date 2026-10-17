@@ -176,7 +176,7 @@ Chat saved: 20260919T215942-39f63f
 | Command | Action |
 | --- | --- |
 | `/btw <question>` | Side answer from Axon 2 Cobalt, never added to chat messages or future context; usage is still billed and recorded |
-| `/fast` | Toggle Fast mode (3x cost, paid plans only; applies to streamed replies without tools) |
+| `/fast` | Toggle Fast mode (2x cost, paid plans only; applies to streamed replies without tools) |
 | `/compact [auto\|off]` | Compact older history with Axon 2 Cobalt; keep six recent turns; toggle automatic compaction |
 | `/lockin [on\|off]` | Max effort + tools + 24-round agent loop; off restores prior settings |
 | `/panel [session\|usage\|memory\|tools]` | Tabbed inspector (also Ctrl+T) |
@@ -286,7 +286,7 @@ it reports that there is nothing old enough to compact. `/compact auto` enables 
 compaction (default); `/compact off` disables it for the process. Auto-compaction checks
 projected context before a turn and between completed tool rounds.
 
-The default threshold is **80% of the model's local input budget**: 2,000,000 tokens
+The default threshold is **80% of the model's local input budget**: 1,000,000 tokens (1,500,000 on Monarch)
 (512,000 on the free plan). Usage-ledger
 prompt/output tokens plus local growth inform the projection; lifetime usage is never
 mistaken for context usage.
@@ -386,7 +386,7 @@ paid plan. Any model except Cobalt can be hidden with `/models hide <id>` and sh
 | `axon-2-regent` Axon 2 Regent | $0.80 | $2.40 |
 | `axon-2-monarch` Axon 2 Monarch | $2.00 | $4.00 |
 
-`xlite` thinking costs 0.4x the listed rate; Fast mode costs 3x. Saved selections of any model no longer
+`xlite` thinking costs 0.4x the listed rate; Fast mode costs 2x. Saved selections of any model no longer
 offered migrate silently to Axon 2 Cobalt.
 
 **Free plan:** the model is fixed to Axon 2 Cobalt with a 512K-token context. Thinking defaults to Standard

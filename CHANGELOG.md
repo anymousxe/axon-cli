@@ -1,3 +1,8 @@
+## 1.6.2
+
+- Local context budgets now match the API windows: 1M for Axon 2 Cobalt and Regent, 1.5M for Monarch (was 2M for all three), so long sessions compact before the API would reject them.
+- Fast mode now multiplies cost by 2 (was 3).
+
 ## 1.6.1
 
 - Axon 2.1 models withdrawn (Crimson, Silver and Sovereign removed); Regent and Monarch are visible again.

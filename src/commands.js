@@ -4,7 +4,7 @@ import os from 'node:os';
 import { MODELS, EFFORTS, isVisible, priceText } from './models.js';
 export const COMMANDS = [
   ['/panel', 'Tabbed session / usage / memory / tools inspector'], ['/lockin', 'Lock in: max effort, tools, 24 rounds (on|off)'],
-  ['/btw', 'Ask a side question without adding context'], ['/fast', 'Toggle Fast mode (3x cost, paid plans)'],
+  ['/btw', 'Ask a side question without adding context'], ['/fast', 'Toggle Fast mode (2x cost, paid plans)'],
   ['/compact', 'Compact older turns; auto|off toggles automation'], ['/retry', 'Resend the last user turn'],
   ['/copy', 'Copy the last assistant answer'], ['/usage', 'Plan usage bars: tokens, images, renewal'],
   ['/login', 'Log in with a device code from the web app'], ['/logout', 'Remove the stored API key'],

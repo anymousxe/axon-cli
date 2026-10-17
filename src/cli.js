@@ -14,7 +14,7 @@ import { SLASH_HELP, isCommandLine } from './commands.js';
 import { copyText } from './clipboard.js';
 import { updateLauncher } from './update.js';
 
-export const VERSION = '1.6.1';
+export const VERSION = '1.6.2';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage|update]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-2-cobalt (see /models)\n      --think <effort>  off (default), xlite, low, medium, high, xhigh, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --no-auto-update  Skip the daily standalone update check
@@ -270,7 +270,7 @@ export async function main(argv = process.argv.slice(2)) {
               if (isFree(settings.plan)) throw new Error('Fast mode is available on paid plans only.');
               if (engine.lockin.active) throw new Error('Turn /lockin off before changing fast mode.');
               settings.fast = !settings.fast;
-              say(`Fast mode ${settings.fast ? 'on ⚡ (3x cost; applies to streamed replies without tools)' : 'off'}: ${MODELS[settings.model].name} · ${effortLabel(settings.effort)}`); break;
+              say(`Fast mode ${settings.fast ? 'on ⚡ (2x cost; applies to streamed replies without tools)' : 'off'}: ${MODELS[settings.model].name} · ${effortLabel(settings.effort)}`); break;
             case '/compact': {
               if (['auto', 'off'].includes(arg)) { engine.autoCompact = arg === 'auto'; say(`Automatic compaction ${engine.autoCompact ? 'on' : 'off'}.`); break; }
               if (arg) throw new Error('Usage: /compact [auto|off]');

@@ -17,9 +17,9 @@ const { DEFAULT_MODEL, MODELS, CATEGORIES, EFFORTS, FREE_EFFORTS, FREE_CONTEXT, 
 const DEFAULT_MODEL = 'axon-2-cobalt';
 // category: flagship | 2. Users may hide any model except the flagship via /models.
 const MODELS = {
-  'axon-2-cobalt': { name: 'Axon 2 Cobalt', input: 0.40, output: 1.20, vision: true, context: 2_000_000, category: 'flagship' },
-  'axon-2-regent': { name: 'Axon 2 Regent', input: 0.80, output: 2.40, vision: true, context: 2_000_000, category: '2' },
-  'axon-2-monarch': { name: 'Axon 2 Monarch', input: 2.00, output: 4.00, vision: true, context: 2_000_000, category: '2' },
+  'axon-2-cobalt': { name: 'Axon 2 Cobalt', input: 0.40, output: 1.20, vision: true, context: 1_000_000, category: 'flagship' },
+  'axon-2-regent': { name: 'Axon 2 Regent', input: 0.80, output: 2.40, vision: true, context: 1_000_000, category: '2' },
+  'axon-2-monarch': { name: 'Axon 2 Monarch', input: 2.00, output: 4.00, vision: true, context: 1_500_000, category: '2' },
 };
 const CATEGORIES = [['flagship', 'Flagship'], ['2', 'Axon 2']];
 // 'off' sends no reasoning_effort at all; the rest are sent to the API as-is.
@@ -36,11 +36,11 @@ function contextWindowFor(model, plan) {
   const window = MODELS[model]?.context ?? CONTEXT_TOKENS;
   return isFree(plan) ? Math.min(window, FREE_CONTEXT) : window;
 }
-// xlite is 0.4x of the listed rate; Fast mode is 3x.
+// xlite is 0.4x of the listed rate; Fast mode is 2x.
 function costFor(model, usage, { effort, fast } = {}) {
   const price = MODELS[model];
   if (!price) throw new Error(`Unknown model: ${model}`);
-  const factor = (effort === 'xlite' ? 0.4 : 1) * (fast ? 3 : 1);
+  const factor = (effort === 'xlite' ? 0.4 : 1) * (fast ? 2 : 1);
   return ((usage.prompt_tokens || 0) * price.input + (usage.completion_tokens || 0) * price.output) * factor / 1e6;
 }
 function money(value) { return `$${value.toFixed(value < 0.01 ? 4 : 2)}`; }
@@ -655,7 +655,7 @@ const { COMMANDS, isCommandLine, fuzzyScore, completions, SLASH_HELP, pathComple
 
 const COMMANDS = [
   ['/panel', 'Tabbed session / usage / memory / tools inspector'], ['/lockin', 'Lock in: max effort, tools, 24 rounds (on|off)'],
-  ['/btw', 'Ask a side question without adding context'], ['/fast', 'Toggle Fast mode (3x cost, paid plans)'],
+  ['/btw', 'Ask a side question without adding context'], ['/fast', 'Toggle Fast mode (2x cost, paid plans)'],
   ['/compact', 'Compact older turns; auto|off toggles automation'], ['/retry', 'Resend the last user turn'],
   ['/copy', 'Copy the last assistant answer'], ['/usage', 'Plan usage bars: tokens, images, renewal'],
   ['/login', 'Log in with a device code from the web app'], ['/logout', 'Remove the stored API key'],
@@ -1866,7 +1866,7 @@ return { RELEASE_MANIFEST, newerVersion, updateLauncher };
 const { VERSION, toolsDefault, parseArgs, main } = (() => {
 
 
-const VERSION = '1.6.1';
+const VERSION = '1.6.2';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage|update]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-2-cobalt (see /models)\n      --think <effort>  off (default), xlite, low, medium, high, xhigh, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --no-auto-update  Skip the daily standalone update check
@@ -2122,7 +2122,7 @@ async function main(argv = process.argv.slice(2)) {
               if (isFree(settings.plan)) throw new Error('Fast mode is available on paid plans only.');
               if (engine.lockin.active) throw new Error('Turn /lockin off before changing fast mode.');
               settings.fast = !settings.fast;
-              say(`Fast mode ${settings.fast ? 'on ⚡ (3x cost; applies to streamed replies without tools)' : 'off'}: ${MODELS[settings.model].name} · ${effortLabel(settings.effort)}`); break;
+              say(`Fast mode ${settings.fast ? 'on ⚡ (2x cost; applies to streamed replies without tools)' : 'off'}: ${MODELS[settings.model].name} · ${effortLabel(settings.effort)}`); break;
             case '/compact': {
               if (['auto', 'off'].includes(arg)) { engine.autoCompact = arg === 'auto'; say(`Automatic compaction ${engine.autoCompact ? 'on' : 'off'}.`); break; }
               if (arg) throw new Error('Usage: /compact [auto|off]');

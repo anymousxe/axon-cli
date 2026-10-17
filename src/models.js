@@ -1,9 +1,9 @@
 export const DEFAULT_MODEL = 'axon-2-cobalt';
 // category: flagship | 2. Users may hide any model except the flagship via /models.
 export const MODELS = {
-  'axon-2-cobalt': { name: 'Axon 2 Cobalt', input: 0.40, output: 1.20, vision: true, context: 2_000_000, category: 'flagship' },
-  'axon-2-regent': { name: 'Axon 2 Regent', input: 0.80, output: 2.40, vision: true, context: 2_000_000, category: '2' },
-  'axon-2-monarch': { name: 'Axon 2 Monarch', input: 2.00, output: 4.00, vision: true, context: 2_000_000, category: '2' },
+  'axon-2-cobalt': { name: 'Axon 2 Cobalt', input: 0.40, output: 1.20, vision: true, context: 1_000_000, category: 'flagship' },
+  'axon-2-regent': { name: 'Axon 2 Regent', input: 0.80, output: 2.40, vision: true, context: 1_000_000, category: '2' },
+  'axon-2-monarch': { name: 'Axon 2 Monarch', input: 2.00, output: 4.00, vision: true, context: 1_500_000, category: '2' },
 };
 export const CATEGORIES = [['flagship', 'Flagship'], ['2', 'Axon 2']];
 // 'off' sends no reasoning_effort at all; the rest are sent to the API as-is.
@@ -20,11 +20,11 @@ export function contextWindowFor(model, plan) {
   const window = MODELS[model]?.context ?? CONTEXT_TOKENS;
   return isFree(plan) ? Math.min(window, FREE_CONTEXT) : window;
 }
-// xlite is 0.4x of the listed rate; Fast mode is 3x.
+// xlite is 0.4x of the listed rate; Fast mode is 2x.
 export function costFor(model, usage, { effort, fast } = {}) {
   const price = MODELS[model];
   if (!price) throw new Error(`Unknown model: ${model}`);
-  const factor = (effort === 'xlite' ? 0.4 : 1) * (fast ? 3 : 1);
+  const factor = (effort === 'xlite' ? 0.4 : 1) * (fast ? 2 : 1);
   return ((usage.prompt_tokens || 0) * price.input + (usage.completion_tokens || 0) * price.output) * factor / 1e6;
 }
 export function money(value) { return `$${value.toFixed(value < 0.01 ? 4 : 2)}`; }
