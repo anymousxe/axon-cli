@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { ensureDir, privateWrite } from './paths.js';
 
-export const RELEASE_MANIFEST = 'https://axon-chat-nu.vercel.app/cli/manifest.json';
+export const RELEASE_MANIFEST = 'https://axon.anymousxe.dev/cli/manifest.json';
 const MAX_BYTES = 4 * 1024 * 1024;
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 

@@ -1067,7 +1067,7 @@ class APIError extends Error {
     const quota = status === 402 && /usage limit/i.test(detail || '');
     const messages = {
       401: 'API key rejected. Run `axon login` or check AXON_API_KEY.',
-      402: quota ? 'Free plan limit reached — upgrade at https://axon-chat-nu.vercel.app/usage' : 'Your Axon wallet is empty. Add funds before trying again.',
+      402: quota ? 'Free plan limit reached — upgrade at https://axon.anymousxe.dev/usage' : 'Your Axon wallet is empty. Add funds before trying again.',
       403: 'The Axon API is rate-limiting rapid requests. Wait a few seconds, then retry.',
       429: 'Rate limit reached. Please try again shortly.',
     };
@@ -1075,7 +1075,7 @@ class APIError extends Error {
     this.status = status;
   }
 }
-function endpoint(base = process.env.AXON_BASE_URL || 'https://axon-chat-nu.vercel.app/api/v1') {
+function endpoint(base = process.env.AXON_BASE_URL || 'https://axon.anymousxe.dev/api/v1') {
   const url = new URL(base);
   if (!['https:', 'http:'].includes(url.protocol)) throw new Error('AXON_BASE_URL must use http or https.');
   if (url.username || url.password) throw new Error('Do not put credentials in AXON_BASE_URL.');
@@ -1216,7 +1216,7 @@ return { APIError, endpoint, sseEvents, completion };
 // auth.js
 const { siteBase, startDeviceFlow, pollDevice, fetchUsage, formatCount, renderUsage, keyMask, whoamiLine } = (() => {
 
-const DEFAULT_SITE = 'https://axon-chat-nu.vercel.app';
+const DEFAULT_SITE = 'https://axon.anymousxe.dev';
 
 // The chat endpoint lives at {site}/api/v1/chat/completions; account routes at {site}/api/*.
 function siteBase(url = process.env.AXON_BASE_URL || DEFAULT_SITE + '/api') {
@@ -1729,7 +1729,7 @@ const { RELEASE_MANIFEST, newerVersion, updateLauncher } = (() => {
 
 
 
-const RELEASE_MANIFEST = 'https://axon-chat-nu.vercel.app/cli/manifest.json';
+const RELEASE_MANIFEST = 'https://axon.anymousxe.dev/cli/manifest.json';
 const MAX_BYTES = 4 * 1024 * 1024;
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 
@@ -1866,7 +1866,7 @@ return { RELEASE_MANIFEST, newerVersion, updateLauncher };
 const { VERSION, toolsDefault, parseArgs, main } = (() => {
 
 
-const VERSION = '1.6.2';
+const VERSION = '1.6.3';
 const HELP = `axon — a fast terminal companion for Axon\n\nUsage: axon [options] [login|logout|whoami|usage|update]\n\n  -p, --prompt <text>    One-shot prompt (piped stdin is additional context)\n  -i, --image <path>     Attach an image; repeat for multiple images\n  -c, --continue         Continue the last chat\n  -r, --resume <id>      Resume a saved chat\n      --model <name>    Default: axon-2-cobalt (see /models)\n      --think <effort>  off (default), xlite, low, medium, high, xhigh, max\n      --hide-thinking   Hide reasoning; does not change its cost\n      --tools           Enable tools for one-shot (interactive chat defaults on)\n      --no-tools        Disable tools
       --new             Start a fresh chat instead of continuing the last one
       --no-auto-update  Skip the daily standalone update check

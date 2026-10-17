@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { APIError } from './api.js';
 
-const DEFAULT_SITE = 'https://axon-chat-nu.vercel.app';
+const DEFAULT_SITE = 'https://axon.anymousxe.dev';
 
 // The chat endpoint lives at {site}/api/v1/chat/completions; account routes at {site}/api/*.
 export function siteBase(url = process.env.AXON_BASE_URL || DEFAULT_SITE + '/api') {

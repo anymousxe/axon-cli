@@ -1,3 +1,7 @@
+## 1.6.3
+
+- Default site is now https://axon.anymousxe.dev (API, login, usage and update manifest). The previous address keeps working, and `AXON_BASE_URL` still overrides it.
+
 ## 1.6.2
 
 - Local context budgets now match the API windows: 1M for Axon 2 Cobalt and Regent, 1.5M for Monarch (was 2M for all three), so long sessions compact before the API would reject them.

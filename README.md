@@ -40,14 +40,14 @@ Lock-in ON - max effort - tools on - 24 rounds - approvals still required
 
 Install [Node.js 18+](https://nodejs.org/) first (a current LTS release is recommended).
 The official standalone channel is hosted at
-[`/cli/manifest.json`](https://axon-chat-nu.vercel.app/cli/manifest.json).
+[`/cli/manifest.json`](https://axon.anymousxe.dev/cli/manifest.json).
 It lists the current version, versioned `.mjs` download, byte length, and SHA-256.
 The npm registry package is not currently published.
 
 **Linux / macOS**
 ```sh
 mkdir -p "$HOME/.local/bin"
-curl --fail --location https://axon-chat-nu.vercel.app/cli/axon-1.5.3.mjs -o "$HOME/.local/bin/axon.mjs"
+curl --fail --location https://axon.anymousxe.dev/cli/axon-1.5.3.mjs -o "$HOME/.local/bin/axon.mjs"
 chmod +x "$HOME/.local/bin/axon.mjs"
 ln -sf "$HOME/.local/bin/axon.mjs" "$HOME/.local/bin/axon"
 ```
@@ -55,7 +55,7 @@ Add `$HOME/.local/bin` to your PATH if needed.
 
 **Windows — PowerShell**
 ```powershell
-Invoke-WebRequest https://axon-chat-nu.vercel.app/cli/axon-1.5.3.mjs -OutFile axon.mjs
+Invoke-WebRequest https://axon.anymousxe.dev/cli/axon-1.5.3.mjs -OutFile axon.mjs
 node .\axon.mjs login
 node .\axon.mjs
 ```
@@ -66,7 +66,7 @@ the updater never requests administrator access.
 <details>
 <summary>Portable single-file installation / running from source</summary>
 
-Download [`axon-1.5.3.mjs`](https://axon-chat-nu.vercel.app/cli/axon-1.5.3.mjs), save it as `axon.mjs`, and run:
+Download [`axon-1.5.3.mjs`](https://axon.anymousxe.dev/cli/axon-1.5.3.mjs), save it as `axon.mjs`, and run:
 
 ```sh
 node /path/to/axon.mjs --help
@@ -420,7 +420,7 @@ parallel processes do not lose entries. There is no migration from an arbitrary 
 | `AXON_CONFIG_DIR` | Override the whole config directory (useful for isolated projects/tests) |
 | `NO_COLOR` | Disable ANSI styling |
 
-Default URL: `https://axon-chat-nu.vercel.app/api/v1/chat/completions`.
+Default URL: `https://axon.anymousxe.dev/api/v1/chat/completions`.
 `axon whoami` reports credential source and local paths **without printing the key**; it is not an account
 identity or a fresh validation request. `axon logout` removes the saved key, not your shell's environment.
 

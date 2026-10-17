@@ -100,7 +100,7 @@ test('whoami line masks the key and summarizes the plan', () => {
 });
 
 test('quota 402s map to a clean upgrade message; other 402s keep the wallet text', async () => {
-  assert.match(new APIError(402, '{"error":{"message":"usage limit reached"}}').message, /Free plan limit reached — upgrade at https:\/\/axon-chat-nu\.vercel\.app\/usage/);
+  assert.match(new APIError(402, '{"error":{"message":"usage limit reached"}}').message, /Free plan limit reached — upgrade at https:\/\/axon\.anymousxe\.dev\/usage/);
   assert.match(new APIError(402, JSON.stringify({ error: 'monthly usage limit exceeded' })).message, /Free plan limit reached/);
   assert.doesNotMatch(new APIError(402, '{"error":"insufficient wallet balance"}').message, /Free plan/);
   assert.match(new APIError(402).message, /wallet/);
@@ -109,7 +109,7 @@ test('quota 402s map to a clean upgrade message; other 402s keep the wallet text
   await withServer((req, res) => { calls++; json(res, 402, { error: 'free plan usage limit reached for this month' }); }, async () => {
     await assert.rejects(completion({ key: 'k', model: 'axon-2-cobalt', messages: [{ role: 'user', content: 'hi' }], retries: 0 }), error => {
       assert.match(error.message, /Free plan limit reached/);
-      assert.match(error.message, /upgrade at https:\/\/axon-chat-nu\.vercel\.app\/usage/);
+      assert.match(error.message, /upgrade at https:\/\/axon\.anymousxe\.dev\/usage/);
       assert.doesNotMatch(error.message, /\{"/);
       return true;
     });

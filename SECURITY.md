@@ -2,7 +2,7 @@
 
 Axon sends prompts, retained conversation context, attached images, and saved memory to
 the configured Axon API. Tool results are also sent after you approve the tool. The default
-endpoint is `https://axon-chat-nu.vercel.app/api/v1`.
+endpoint is `https://axon.anymousxe.dev/api/v1`.
 
 - Keys are entered without echo, stored in the platform config directory, and created with
   mode `0600` on Unix. The containing directory is created with mode `0700`. Windows relies

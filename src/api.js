@@ -5,7 +5,7 @@ export class APIError extends Error {
     const quota = status === 402 && /usage limit/i.test(detail || '');
     const messages = {
       401: 'API key rejected. Run `axon login` or check AXON_API_KEY.',
-      402: quota ? 'Free plan limit reached — upgrade at https://axon-chat-nu.vercel.app/usage' : 'Your Axon wallet is empty. Add funds before trying again.',
+      402: quota ? 'Free plan limit reached — upgrade at https://axon.anymousxe.dev/usage' : 'Your Axon wallet is empty. Add funds before trying again.',
       403: 'The Axon API is rate-limiting rapid requests. Wait a few seconds, then retry.',
       429: 'Rate limit reached. Please try again shortly.',
     };
@@ -13,7 +13,7 @@ export class APIError extends Error {
     this.status = status;
   }
 }
-export function endpoint(base = process.env.AXON_BASE_URL || 'https://axon-chat-nu.vercel.app/api/v1') {
+export function endpoint(base = process.env.AXON_BASE_URL || 'https://axon.anymousxe.dev/api/v1') {
   const url = new URL(base);
   if (!['https:', 'http:'].includes(url.protocol)) throw new Error('AXON_BASE_URL must use http or https.');
   if (url.username || url.password) throw new Error('Do not put credentials in AXON_BASE_URL.');
